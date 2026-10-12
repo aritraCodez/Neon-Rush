@@ -1,5 +1,5 @@
 # Neon Rush
-
+ 
 A complete 3D endless runner built with React 19, TypeScript, Vite, React Three Fiber, and Three.js. Everything in the circuit is rendered in real time; no models, textures, audio files, API keys, or backend are required.
 
 ## Run locally
