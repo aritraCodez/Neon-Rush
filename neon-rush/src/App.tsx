@@ -1,0 +1,126 @@
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, AudioLines, ChevronRight, CircleHelp, Gamepad2, Magnet, Maximize, Minimize, Settings2, Shield, Trophy, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { Scene } from './components/Scene';
+import { GameOverlay, format } from './components/GameOverlay';
+import { Hud } from './components/Hud';
+import { Modal } from './components/Modal';
+import { game } from './game/engine';
+import { audio } from './game/audio';
+import { useControls } from './game/useControls';
+import { CombatHud } from './components/CombatHud';
+import { CampaignOverlay } from './components/CampaignOverlay';
+import { LevelSelect } from './components/LevelSelect';
+import { inCombat } from './game/combat';
+
+function readSetting(key: string, fallback: boolean) {
+  try { const value = localStorage.getItem(`neon-rush-${key}`); return value === null ? fallback : value === 'true'; } catch { return fallback; }
+}
+function saveSetting(key: string, value: boolean) { try { localStorage.setItem(`neon-rush-${key}`, String(value)); } catch { /* Optional preferences. */ } }
+
+export default function App() {
+  const state = useSyncExternalStore(game.subscribe, game.getSnapshot);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [dialog, setDialog] = useState<'help' | 'settings' | 'missions' | null>(null);
+  const [sound, setSound] = useState(() => readSetting('sound', true));
+  const [quality, setQuality] = useState(() => readSetting('quality', true));
+  const [reduced, setReduced] = useState(() => readSetting('motion', window.matchMedia('(prefers-reduced-motion: reduce)').matches));
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenNote, setFullscreenNote] = useState('');
+  const stage = useRef<HTMLDivElement>(null);
+  const pointer = useRef<{ x: number; y: number; time: number } | null>(null);
+  useControls(ready && !failed);
+  useEffect(() => { audio.enabled = sound; saveSetting('sound', sound); if (sound) audio.unlock(); }, [sound]);
+  useEffect(() => { game.reducedMotion = reduced; saveSetting('motion', reduced); }, [reduced]);
+  useEffect(() => { saveSetting('quality', quality); }, [quality]);
+  useEffect(() => { const change = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange', change); return () => document.removeEventListener('fullscreenchange', change); }, []);
+  useEffect(() => {
+    // Expose only supported, real game actions to compatible agent browsers.
+    type Context = { registerTool: (tool: object, options: { signal: AbortSignal }) => void | Promise<void> };
+    const context = (document as Document & { modelContext?: Context }).modelContext;
+    if (!context?.registerTool) return;
+    const lifecycle = new AbortController();
+    const tools = [
+      { name: 'read_run_state', description: 'Read the current Neon Rush score, distance, power-ups, and game phase.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true }, execute: () => game.getSnapshot() },
+      { name: 'pause_run', description: 'Pause a running Neon Rush game. Does not start or restart a run.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: false }, execute: () => { if (!['running', 'countdown', 'combat', 'boss', 'transition'].includes(game.phase)) throw new Error('There is no active run to pause.'); game.pause(); return game.getSnapshot(); } },
+    ];
+    for (const tool of tools) { try { void Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {}); } catch { /* Unsupported experimental API. */ } }
+    return () => lifecycle.abort();
+  }, []);
+  const onReady = useCallback(() => setReady(true), []);
+  const onError = useCallback(() => { setFailed(true); game.menu(); }, []);
+  const openDialog = (value: 'help' | 'settings' | 'missions') => { game.pause(); setDialog(value); };
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (stage.current?.requestFullscreen) await stage.current.requestFullscreen();
+      else setFullscreenNote('Fullscreen is unavailable in this browser.');
+    } catch { setFullscreenNote('Fullscreen is unavailable in this browser.'); }
+  };
+
+  return <div className={`app ${reduced ? 'reduced-motion' : ''}`}>
+    <header className="site-header">
+      <a className="brand" href="#" onClick={event => { event.preventDefault(); if (state.phase === 'menu') return; game.pause(); }} aria-label="Neon Rush home"><span className="brand-mark"><Zap size={23} fill="currentColor" strokeWidth={1.6} /></span><span>NEON<span className="brand-light">RUSH</span><small>COMBAT EVOLUTION</small></span></a>
+      <div className="header-center"><span className="header-dash" /><span>RUN. FIGHT. RISE.</span><span className="header-dash" /></div>
+      <div className="header-actions"><button className={`sound-button ${sound ? '' : 'muted'}`} onClick={() => setSound(!sound)} aria-label={sound ? 'Mute sound' : 'Enable sound'} title={sound ? 'Mute sound' : 'Enable sound'}>{sound ? <AudioLines size={18} /> : <VolumeX size={18} />}<span>SOUND {sound ? 'ON' : 'OFF'}</span></button><span className="header-separator" /><button className="icon-button" aria-label="How to play" onClick={() => openDialog('help')}><CircleHelp size={19} /></button><button className="icon-button" aria-label="Settings" onClick={() => openDialog('settings')}><Settings2 size={19} /></button></div>
+    </header>
+
+    <main>
+      <div className="section-topline"><span><span className="live-dot" /> NIGHT CITY / SYSTEM ONLINE</span><span>CAMPAIGN + ENDLESS</span></div>
+      <div ref={stage} className={`game-stage phase-${state.phase} ${state.campaign.active ? 'campaign-mode' : ''}`} aria-label="Neon Rush 3D game" onPointerMove={event => {
+        if (!inCombat(state.phase) || (event.target as HTMLElement).closest('button, [role="slider"]')) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        game.combat.aimActive = true; game.combat.aimNdc = { x: (event.clientX - rect.left) / rect.width * 2 - 1, y: 1 - (event.clientY - rect.top) / rect.height * 2 };
+      }} onPointerDown={event => {
+        if ((event.target as HTMLElement).closest('button, a, [role="slider"]')) return;
+        if (inCombat(state.phase)) { if (event.pointerType === 'mouse' && event.button === 0) { event.currentTarget.setPointerCapture(event.pointerId); game.fire(true); } return; }
+        if (state.phase !== 'running') return;
+        pointer.current = { x: event.clientX, y: event.clientY, time: Date.now() };
+      }} onPointerUp={event => {
+        if (inCombat(state.phase) && event.pointerType === 'mouse') game.fire(false);
+        if (!pointer.current || state.phase !== 'running') return;
+        const start = pointer.current; pointer.current = null;
+        const dx = event.clientX - start.x, dy = event.clientY - start.y;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) > 25) game.act(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 'right' : 'left' : dy < 0 ? 'jump' : 'slide');
+        else if (Date.now() - start.time < 300) game.act('jump');
+      }} onPointerCancel={() => { pointer.current = null; game.fire(false); }}>
+        <div className="scene"><Scene highQuality={quality} onReady={onReady} onError={onError} levelId={state.campaign.levelId} /></div>
+        <div className="scene-shade" />
+        <Hud state={state} />
+        <CombatHud state={state} />
+        <GameOverlay state={state} ready={ready} failed={failed} onHelp={() => openDialog('help')} onMissions={() => openDialog('missions')} />
+        <CampaignOverlay state={state} onMissions={() => openDialog('missions')} />
+        <button className="fullscreen-button icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={toggleFullscreen}>{fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}</button>
+        {fullscreenNote && <div className="fullscreen-note" role="status">{fullscreenNote}<button aria-label="Dismiss message" onClick={() => setFullscreenNote('')}><X size={14} /></button></div>}
+      </div>
+
+      <div className="guide-grid">
+        <button className="guide-card controls-card" onClick={() => openDialog('help')}><div className="guide-icon"><Gamepad2 size={21} /></div><div><h3>MAKE YOUR MOVE</h3><p><kbd>←</kbd><kbd>→</kbd><span>Move</span><kbd>↑</kbd><span>Jump</span><kbd>↓</kbd><span>Slide</span></p></div><ChevronRight size={16} className="card-chevron" /></button>
+        <button className="guide-card power-card" onClick={() => openDialog('help')}><div className="guide-icon violet"><Zap size={20} /></div><div><h3>A LITTLE EXTRA EDGE</h3><p><Shield size={14} className="cyan" />Shield<span className="dot-separator">·</span><Magnet size={14} className="violet-text" />Magnet<span className="dot-separator">·</span><span className="lime">2×</span>Score</p></div><ChevronRight size={16} className="card-chevron" /></button>
+        <div className="guide-card record-card"><div className="guide-icon gold"><Trophy size={20} /></div><div><h3>YOUR ONLY RIVAL IS YOU</h3><p>Personal best <strong>{format(state.best)}</strong><span className="record-unit">PTS</span></p></div><span className="record-orbit">↗</span></div>
+      </div>
+    </main>
+    <footer><span>ONE CITY. FIVE DISTRICTS. <b>MAKE THEM YOURS.</b></span><span><i /> NO DOWNLOAD. JUST PLAY.<span className="footer-version">V.2.0</span></span></footer>
+
+    {dialog === 'missions' && <Modal title="Choose your next fight." onClose={() => setDialog(null)}><LevelSelect progress={state.campaign.progress} ready={ready && !failed} onStart={() => setDialog(null)} /></Modal>}
+
+    {dialog === 'settings' && <Modal title="Fine-tune your rush" onClose={() => setDialog(null)}>
+      <p className="modal-copy">Your circuit. Your settings.</p>
+      {[{ title: 'Sound effects', text: 'Hear coins, jumps, and power-ups.', value: sound, set: setSound, Icon: Volume2 }, { title: 'Neon bloom', text: 'Turn off for smoother play on slower devices.', value: quality, set: setQuality, Icon: Zap }, { title: 'Reduced motion', text: 'Quiet the menus and ambient track movement.', value: reduced, set: setReduced, Icon: Settings2 }].map(({ title, text, value, set, Icon }) => <div className="setting-row" key={title}><Icon size={20} /><div><strong>{title}</strong><p>{text}</p></div><button className={`switch ${value ? 'on' : ''}`} role="switch" aria-checked={value} aria-label={title} onClick={() => set(!value)}><span /></button></div>)}
+      <p className="settings-note">Scores and preferences are saved on this browser.</p>
+    </Modal>}
+    {dialog === 'help' && <Modal title="Own the night." onClose={() => setDialog(null)}>
+      <p className="modal-copy">Run the district. Clear the checkpoint. Defeat its boss.</p>
+      <div className="help-controls">{[[ArrowLeft, 'Change lanes', '← → or A / D', 'Swipe left or right'], [ArrowUp, 'Jump barriers', '↑, W or Space', 'Swipe up or tap'], [ArrowDown, 'Slide under gates', '↓ or S', 'Swipe down']].map(([Icon, title, keys, touch]) => { const ControlIcon = Icon as typeof ArrowRight; return <div key={String(title)}><ControlIcon size={20} /><strong>{String(title)}</strong><span>{String(keys)}</span><small>{String(touch)}</small></div>; })}</div>
+      <div className="hazard-tip"><span className="hazard-swatch" /><p><b>Pink blocks:</b> change lanes. <b>Orange barriers:</b> jump. <b>Raised pink beams:</b> slide. There’s always an open lane.</p></div>
+      <h3 className="help-heading">COMBAT FIELD MANUAL</h3>
+      <div className="combat-help"><p><b>Mouse:</b> aim. <b>Hold left click / F:</b> fire. <b>R:</b> reload. <b>Q:</b> cycle weapons. <b>Shift:</b> dash to an adjacent lane.</p><p><b>Cover:</b> move behind a barricade and hold S / Down. Release to fire over it. Jump shockwaves; dash out of marked laser lanes.</p><p><b>Critical hits:</b> aim at glowing cores. Shield Bots expose their armor while winding up an attack. Kills chain into a score multiplier.</p><p><b>On mobile:</b> use the aim pad, hold FIRE or COVER, and use the movement and ability buttons. You can also drag the arena to aim.</p><p>All weapons have unlimited reserve energy. A charged laser fires after holding for 0.8 seconds. The shotgun unlocks at level 2; the laser at level 3. Green pickups repair health, violet restore armor, cyan refill ammunition.</p><p>Campaign checkpoints are saved at each encounter. Retry restores health and adds 25 damage to the mission rating. Credits bank on mission completion; spend them in Missions & Armory.</p></div>
+      <h3 className="help-heading">GRAB AN ADVANTAGE</h3>
+      <div className="help-power"><Shield className="cyan" size={23} /><div><strong>Shield</strong><span>Absorbs one collision. Lasts up to 10 seconds.</span></div></div>
+      <div className="help-power"><Magnet className="violet-text" size={23} /><div><strong>Coin magnet</strong><span>Pulls in nearby coins from all lanes for 12 seconds.</span></div></div>
+      <div className="help-power"><Zap className="lime" size={23} /><div><strong>Double score</strong><span>Earn twice the points for 10 seconds.</span></div></div>
+      <p className="help-footnote">Coins earn 25 points. Every meter earns 2. Speed builds as you go. Press <kbd>Esc</kbd> or <kbd>P</kbd> to pause.</p>
+      <button className="primary-button" onClick={() => setDialog(null)}>GOT IT. LET’S GO.</button>
+    </Modal>}
+  </div>;
+}
