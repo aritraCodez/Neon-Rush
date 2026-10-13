@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, AudioLines, ChevronRight, CircleHelp, Gamepad2, Magnet, Maximize, Minimize, Settings2, Shield, Trophy, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, AudioLines, Box, ChevronRight, CircleHelp, Gamepad2, Magnet, Maximize, Minimize, Settings2, Shield, Trophy, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import { Scene } from './components/Scene';
 import { GameOverlay, format } from './components/GameOverlay';
 import { Hud } from './components/Hud';
@@ -11,6 +11,11 @@ import { CombatHud } from './components/CombatHud';
 import { CampaignOverlay } from './components/CampaignOverlay';
 import { LevelSelect } from './components/LevelSelect';
 import { inCombat } from './game/combat';
+import { RunnerWorkshop } from './components/RunnerWorkshop';
+import { readRunnerStyle, saveRunnerStyle } from './game/runnerStyle';
+import './multiplayer/multiplayer.css';
+
+const Multiplayer = lazy(() => import('./multiplayer/Multiplayer'));
 
 function readSetting(key: string, fallback: boolean) {
   try { const value = localStorage.getItem(`neon-rush-${key}`); return value === null ? fallback : value === 'true'; } catch { return fallback; }
@@ -18,10 +23,12 @@ function readSetting(key: string, fallback: boolean) {
 function saveSetting(key: string, value: boolean) { try { localStorage.setItem(`neon-rush-${key}`, String(value)); } catch { /* Optional preferences. */ } }
 
 export default function App() {
+  const [multiplayer, setMultiplayer] = useState(() => new URLSearchParams(location.search).has('room'));
   const state = useSyncExternalStore(game.subscribe, game.getSnapshot);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [dialog, setDialog] = useState<'help' | 'settings' | 'missions' | null>(null);
+  const [dialog, setDialog] = useState<'help' | 'settings' | 'missions' | 'workshop' | null>(null);
+  const [runnerStyle, setRunnerStyle] = useState(readRunnerStyle);
   const [sound, setSound] = useState(() => readSetting('sound', true));
   const [quality, setQuality] = useState(() => readSetting('quality', true));
   const [reduced, setReduced] = useState(() => readSetting('motion', window.matchMedia('(prefers-reduced-motion: reduce)').matches));
@@ -29,10 +36,11 @@ export default function App() {
   const [fullscreenNote, setFullscreenNote] = useState('');
   const stage = useRef<HTMLDivElement>(null);
   const pointer = useRef<{ x: number; y: number; time: number } | null>(null);
-  useControls(ready && !failed);
+  useControls(ready && !failed && !multiplayer);
   useEffect(() => { audio.enabled = sound; saveSetting('sound', sound); if (sound) audio.unlock(); }, [sound]);
   useEffect(() => { game.reducedMotion = reduced; saveSetting('motion', reduced); }, [reduced]);
   useEffect(() => { saveSetting('quality', quality); }, [quality]);
+  useEffect(() => { saveRunnerStyle(runnerStyle); }, [runnerStyle]);
   useEffect(() => { const change = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange', change); return () => document.removeEventListener('fullscreenchange', change); }, []);
   useEffect(() => {
     // Expose only supported, real game actions to compatible agent browsers.
@@ -47,9 +55,9 @@ export default function App() {
     for (const tool of tools) { try { void Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {}); } catch { /* Unsupported experimental API. */ } }
     return () => lifecycle.abort();
   }, []);
-  const onReady = useCallback(() => setReady(true), []);
+  const onReady = useCallback(() => { setReady(true); setFailed(false); }, []);
   const onError = useCallback(() => { setFailed(true); game.menu(); }, []);
-  const openDialog = (value: 'help' | 'settings' | 'missions') => { game.pause(); setDialog(value); };
+  const openDialog = (value: 'help' | 'settings' | 'missions' | 'workshop') => { game.pause(); game.fire(false); setDialog(value); };
   const toggleFullscreen = async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -57,6 +65,8 @@ export default function App() {
       else setFullscreenNote('Fullscreen is unavailable in this browser.');
     } catch { setFullscreenNote('Fullscreen is unavailable in this browser.'); }
   };
+
+  if (multiplayer) return <Suspense fallback={<div className="app"><p style={{ padding: 40 }}>Loading multiplayer arena…</p></div>}><Multiplayer style={runnerStyle} sound={sound} onSound={() => setSound(value => !value)} onExit={() => { game.menu(); setMultiplayer(false); }} /></Suspense>;
 
   return <div className={`app ${reduced ? 'reduced-motion' : ''}`}>
     <header className="site-header">
@@ -67,6 +77,7 @@ export default function App() {
 
     <main>
       <div className="section-topline"><span><span className="live-dot" /> NIGHT CITY / SYSTEM ONLINE</span><span>CAMPAIGN + ENDLESS</span></div>
+      <nav className="arena-mode-nav" aria-label="Game mode"><button aria-current="page"><Gamepad2 size={16} />SOLO CAMPAIGN</button><button onClick={() => { game.pause(); setDialog(null); setMultiplayer(true); }}><Zap size={16} />MULTIPLAYER ARENA</button></nav>
       <div ref={stage} className={`game-stage phase-${state.phase} ${state.campaign.active ? 'campaign-mode' : ''}`} aria-label="Neon Rush 3D game" onPointerMove={event => {
         if (!inCombat(state.phase) || (event.target as HTMLElement).closest('button, [role="slider"]')) return;
         const rect = event.currentTarget.getBoundingClientRect();
@@ -84,7 +95,7 @@ export default function App() {
         if (Math.max(Math.abs(dx), Math.abs(dy)) > 25) game.act(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 'right' : 'left' : dy < 0 ? 'jump' : 'slide');
         else if (Date.now() - start.time < 300) game.act('jump');
       }} onPointerCancel={() => { pointer.current = null; game.fire(false); }}>
-        <div className="scene"><Scene highQuality={quality} onReady={onReady} onError={onError} levelId={state.campaign.levelId} /></div>
+        <div className="scene"><Scene highQuality={quality} onReady={onReady} onError={onError} levelId={state.campaign.levelId} runnerStyle={runnerStyle} suspended={dialog === 'workshop'} /></div>
         <div className="scene-shade" />
         <Hud state={state} />
         <CombatHud state={state} />
@@ -94,6 +105,7 @@ export default function App() {
         {fullscreenNote && <div className="fullscreen-note" role="status">{fullscreenNote}<button aria-label="Dismiss message" onClick={() => setFullscreenNote('')}><X size={14} /></button></div>}
       </div>
 
+      <button className="runner-lab-entry" onClick={() => openDialog('workshop')} aria-label="Open 3D Runner Lab"><span className="lab-entry-icon"><Box size={24} /></span><span className="lab-entry-copy"><strong>BUILD YOUR IDENTITY.</strong><small>Explore your runner in 3D. Change your armor. Preview every weapon.</small></span><span className="lab-entry-tag"><span>ENTER RUNNER LAB</span><ChevronRight size={20} /></span></button>
       <div className="guide-grid">
         <button className="guide-card controls-card" onClick={() => openDialog('help')}><div className="guide-icon"><Gamepad2 size={21} /></div><div><h3>MAKE YOUR MOVE</h3><p><kbd>←</kbd><kbd>→</kbd><span>Move</span><kbd>↑</kbd><span>Jump</span><kbd>↓</kbd><span>Slide</span></p></div><ChevronRight size={16} className="card-chevron" /></button>
         <button className="guide-card power-card" onClick={() => openDialog('help')}><div className="guide-icon violet"><Zap size={20} /></div><div><h3>A LITTLE EXTRA EDGE</h3><p><Shield size={14} className="cyan" />Shield<span className="dot-separator">·</span><Magnet size={14} className="violet-text" />Magnet<span className="dot-separator">·</span><span className="lime">2×</span>Score</p></div><ChevronRight size={16} className="card-chevron" /></button>
@@ -102,6 +114,7 @@ export default function App() {
     </main>
     <footer><span>ONE CITY. FIVE DISTRICTS. <b>MAKE THEM YOURS.</b></span><span><i /> NO DOWNLOAD. JUST PLAY.<span className="footer-version">V.2.0</span></span></footer>
 
+    {dialog === 'workshop' && <Modal title="Your runner. Your signature." className="workshop-modal" onClose={() => setDialog(null)}><RunnerWorkshop style={runnerStyle} onStyle={setRunnerStyle} reduced={reduced} unlocked={state.campaign.progress.unlocked} /></Modal>}
     {dialog === 'missions' && <Modal title="Choose your next fight." onClose={() => setDialog(null)}><LevelSelect progress={state.campaign.progress} ready={ready && !failed} onStart={() => setDialog(null)} /></Modal>}
 
     {dialog === 'settings' && <Modal title="Fine-tune your rush" onClose={() => setDialog(null)}>
