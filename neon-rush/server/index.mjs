@@ -12,7 +12,13 @@ const validToken = (provided, expected) => typeof provided === 'string' && /^[a-
 
 export async function startArenaServer({
   port = Number(process.env.PORT || 3001), host = '0.0.0.0',
-  allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5187').split(',').map(value => value.trim().replace(/\/$/, '')),
+  allowedOrigins = (process.env.ALLOWED_ORIGINS || [
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+    'http://127.0.0.1:5187',
+    'https://neon-rush-rsii.onrender.com',
+    'https://neon-rush-rsii.onrender.com/'
+  ].join(',')).split(',').map(value => value.trim().replace(/\/$/, '')).filter(Boolean),
   maxRooms = 50, maxConnections = 320, reconnectGrace = 20_000,
 } = {}) {
   const rooms = new Map(), sessions = new Map();

@@ -14,11 +14,16 @@ function endpoint(): string {
   const configured = import.meta.env.VITE_MULTIPLAYER_URL?.trim();
   if (!configured && !import.meta.env.DEV) return '';
   try {
-    const url = new URL(configured || window.location.origin);
+    const raw = configured || (import.meta.env.DEV ? window.location.origin : '');
+    if (!raw) return '';
+    const url = new URL(raw);
     if (url.protocol === 'https:') url.protocol = 'wss:';
     if (url.protocol === 'http:') url.protocol = 'ws:';
     if (!['ws:', 'wss:'].includes(url.protocol) || (location.protocol === 'https:' && url.protocol !== 'wss:')) return '';
-    url.pathname = '/ws'; url.search = ''; url.hash = ''; return url.toString();
+    url.pathname = '/ws';
+    url.search = '';
+    url.hash = '';
+    return url.toString();
   } catch { return ''; }
 }
 
