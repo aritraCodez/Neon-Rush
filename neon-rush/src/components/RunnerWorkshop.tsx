@@ -8,6 +8,7 @@ import { RunnerModel } from './RunnerModel';
 import { RUNNER_STYLES } from '../game/runnerStyle';
 import type { RunnerStyle } from '../game/runnerStyle';
 import { createRigClips, getRigJoints, poseRig } from '../game/rigAnimation';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { RigMotion } from '../game/rigAnimation';
 import { WEAPONS, weaponById } from '../game/weapons';
 import type { WeaponId } from '../game/weapons';
@@ -19,8 +20,8 @@ function CameraControls({ rotating, actions }: { rotating: boolean; actions: Vie
   const controls = useRef<OrbitControls | null>(null);
   useEffect(() => {
     const orbit = new OrbitControls(camera, gl.domElement);
-    orbit.target.set(0, 1.02, 0); orbit.enablePan = false;
-    orbit.minDistance = 2.5; orbit.maxDistance = 7;
+    orbit.target.set(0, 1.05, 0); orbit.enablePan = false;
+    orbit.minDistance = 3; orbit.maxDistance = 16;
     orbit.minPolarAngle = 0.3; orbit.maxPolarAngle = Math.PI / 2 + 0.12;
     orbit.autoRotateSpeed = 1.4;
     orbit.update(); orbit.saveState(); controls.current = orbit;
@@ -52,10 +53,12 @@ function Showroom({ style, weapon, wireframe, motion, playing, modelRef, actions
   return <>
     <color attach="background" args={['#0b1420']} />
     <fog attach="fog" args={['#0b1420', 7, 17]} />
-    <ambientLight intensity={1.5} color="#bacde3" />
-    <directionalLight position={[-3, 5, -4]} intensity={3.5} color="#e2eeff" />
-    <directionalLight position={[4, 2, 2]} intensity={4} color={style.color} />
-    <pointLight position={[-3, 1, 2]} intensity={12} color="#b697ff" />
+    <hemisphereLight intensity={0.7} color="#d7e8ff" groundColor="#1a2430" />
+    <ambientLight intensity={0.55} color="#bacde3" />
+    <directionalLight position={[-3, 5, -4]} intensity={3.2} color="#e2eeff" />
+    <directionalLight position={[4, 2, 2]} intensity={3.4} color={style.color} />
+    <directionalLight position={[0, 3, 5]} intensity={1.6} color="#ffffff" />
+    <pointLight position={[-3, 1, 2]} intensity={10} color="#b697ff" />
     <RunnerModel style={style} weapon={weapon} wireframe={wireframe} modelRef={modelRef} pose={() => ({ motion, time: time.current })} />
     <mesh position={[0, -0.095, 0]}><cylinderGeometry args={[1.25, 1.35, 0.15, 64]} /><meshStandardMaterial color="#1d2d3a" roughness={0.4} metalness={0.7} /></mesh>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}><ringGeometry args={[1.19, 1.22, 64]} /><meshBasicMaterial color={style.color} toneMapped={false} /></mesh>
@@ -91,9 +94,11 @@ export function RunnerWorkshop({ style, onStyle, reduced, unlocked }: { style: R
     setExporting(true); setStatus('Preparing your model…');
     try {
       // Work on a clone so sampling export clips never changes the visible pose.
-      const model = modelRef.current.clone(true);
-      const animations = createRigClips(model);
-      poseRig(getRigJoints(model), 'idle', 0); model.updateMatrixWorld(true);
+      const clips = modelRef.current.userData.clips as THREE.AnimationClip[] | undefined;
+      const model = clips?.length ? cloneSkinned(modelRef.current) as THREE.Group : modelRef.current.clone(true);
+      const animations = clips?.length ? clips : createRigClips(model);
+      if (!clips?.length) poseRig(getRigJoints(model), 'idle', 0);
+      model.updateMatrixWorld(true);
       const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
       const result = await new GLTFExporter().parseAsync(model, { binary: true, animations, onlyVisible: true });
       if (!(result instanceof ArrayBuffer)) throw new Error('Unexpected model format');
@@ -115,7 +120,7 @@ export function RunnerWorkshop({ style, onStyle, reduced, unlocked }: { style: R
         const action = keys[event.key]; if (action) { event.preventDefault(); actions.current?.(action); }
       }}>
         {failed ? <div className="workshop-unavailable"><strong>3D preview unavailable</strong><p>Enable WebGL and hardware acceleration, then reload. You can still choose an armor finish.</p></div> : <PreviewBoundary onError={() => setFailed(true)}>
-          <Canvas camera={{ position: [3.2, 2.4, -4.5], fov: 36, near: 0.1, far: 40 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: false }} onCreated={({ gl }) => {
+          <Canvas camera={{ position: [5.4, 2.6, -7.4], fov: 32, near: 0.1, far: 50 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: false }} onCreated={({ gl }) => {
             setReady(true);
             gl.domElement.addEventListener('webglcontextlost', event => { event.preventDefault(); setFailed(true); }, { once: true });
           }}>

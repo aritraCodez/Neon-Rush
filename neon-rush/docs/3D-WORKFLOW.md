@@ -13,7 +13,9 @@ A verified [Nova runner with the charged laser](../artifacts/neon-runner-nova-la
 3. Inspect the named `NR_*` parts in the Outliner. Edit the armor geometry and materials. The imported object animation clips can be inspected in Blender's animation editors.
 4. Save a `.blend` working copy. Export GLB when preparing a web asset; keep the named joint hierarchy if retaining these rigid animations.
 
-The procedural source is `src/components/RunnerModel.tsx`; animation poses and exported clips are shared in `src/game/rigAnimation.ts`. Editing the exported file does not automatically replace the web character. Integrating a redesigned GLB requires a loader and matching animation mapping in the React scene.
+The playable character is the public RobotExpressive GLB at `public/models/neon-runner.glb` (reference copy in `assets/reference/`). `src/components/RunnerModel.tsx` loads it, plays `Idle` / `Running` / `Jump` / `Punch`, and recolors the `Main` / `Grey` / `Black` materials to the selected armor finish.
+
+Optional Blender restyle (materials and empties) lives in `tools/blender/build_neon_runner.py`. Re-exporting this armature from Blender 5.2 can bake bad bone scale tracks, so the game ships the original clip set. A procedural capsule rig remains as a fallback if the GLB cannot load.
 
 Reference: [Blender glTF import/export manual](https://docs.blender.org/manual/en/5.1/addons/import_export/scene_gltf2.html).
 

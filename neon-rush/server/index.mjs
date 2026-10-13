@@ -30,7 +30,16 @@ export async function startArenaServer({
       response.end(JSON.stringify({ status: closing ? 'stopping' : 'ok', online: onlineCount(), rooms: rooms.size }));
     } else { response.writeHead(404, { 'Content-Type': 'text/plain' }); response.end('Neon Rush Arena server. Health: /health'); }
   });
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 2048, perMessageDeflate: false });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 16384, perMessageDeflate: false });
+  const cleanIce = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (typeof value.candidate !== 'string' || value.candidate.length > 512) return null;
+    const candidate = { candidate: value.candidate };
+    if (typeof value.sdpMid === 'string' && value.sdpMid.length <= 32) candidate.sdpMid = value.sdpMid;
+    if (Number.isInteger(value.sdpMLineIndex) && value.sdpMLineIndex >= 0 && value.sdpMLineIndex < 8) candidate.sdpMLineIndex = value.sdpMLineIndex;
+    if (typeof value.usernameFragment === 'string' && value.usernameFragment.length <= 64) candidate.usernameFragment = value.usernameFragment;
+    return candidate;
+  };
   const onlineCount = () => [...sessions.values()].filter(session => session.ws?.readyState === WebSocket.OPEN).length;
   const send = (ws, value) => {
     if (ws?.readyState !== WebSocket.OPEN) return;
@@ -47,7 +56,9 @@ export async function startArenaServer({
     if (session.ws && session.ws !== ws) session.ws.close(4000, 'Session opened in another connection');
     session.ws = ws; session.disconnectedAt = 0; ws.playerId = session.id;
     rooms.get(session.code)?.setConnected(session.id, true);
-    send(ws, { type: 'session', id: session.id, token: session.token, code: session.code }); snapshot(session);
+    send(ws, { type: 'session', id: session.id, token: session.token, code: session.code });
+    const room = rooms.get(session.code); if (room) send(ws, { type: 'chat-history', messages: room.chat });
+    snapshot(session);
   }
   http.on('upgrade', (request, socket, head) => {
     if (closing || request.url !== '/ws' || !allowedOrigins.includes(request.headers.origin) || wss.clients.size >= maxConnections) {
@@ -56,12 +67,12 @@ export async function startArenaServer({
     wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws));
   });
   wss.on('connection', ws => {
-    ws.alive = true; ws.tokens = 80; ws.refillAt = Date.now(); ws.playerId = '';
+    ws.alive = true; ws.tokens = 120; ws.refillAt = Date.now(); ws.playerId = '';
     send(ws, { type: 'hello', protocol: 1, online: onlineCount() });
     ws.on('pong', () => { ws.alive = true; });
     ws.on('error', () => { /* Close/disconnect handles recovery. */ });
     ws.on('message', (raw, binary) => {
-      const now = Date.now(); ws.tokens = Math.min(80, ws.tokens + (now - ws.refillAt) * 0.05); ws.refillAt = now;
+      const now = Date.now(); ws.tokens = Math.min(120, ws.tokens + (now - ws.refillAt) * 0.08); ws.refillAt = now;
       if (binary || ws.tokens < 1) { ws.close(1008, 'Message rate or format not supported'); return; } ws.tokens--;
       let message;
       try { message = JSON.parse(raw.toString()); } catch { ws.close(1008, 'Invalid JSON'); return; }
@@ -97,6 +108,24 @@ export async function startArenaServer({
           case 'ready': room.ready(session.id, message.ready); break;
           case 'start': room.start(session.id); break;
           case 'lobby': room.lobby(session.id); break;
+          case 'chat': {
+            const chat = room.addChat(session.id, message.text); if (!chat) return;
+            const payload = { type: 'chat', message: chat };
+            for (const id of room.players.keys()) send(sessions.get(id)?.ws, payload);
+            break;
+          }
+          case 'voice-state': room.setMuted(session.id, message.muted); break;
+          case 'voice': {
+            const targetId = typeof message.to === 'string' ? message.to : '';
+            if (!targetId || targetId === session.id || !room.players.has(targetId)) return;
+            const kind = message.kind;
+            if (kind === 'ice') {
+              const candidate = cleanIce(message.candidate); if (!candidate) return;
+              send(sessions.get(targetId)?.ws, { type: 'voice', from: session.id, kind, candidate }); return;
+            }
+            if ((kind !== 'offer' && kind !== 'answer') || typeof message.sdp !== 'string' || message.sdp.length < 20 || message.sdp.length > 8192) return;
+            send(sessions.get(targetId)?.ws, { type: 'voice', from: session.id, kind, sdp: message.sdp }); break;
+          }
           case 'leave': drop(session); ws.playerId = ''; send(ws, { type: 'left' }); break;
         }
       } catch (error) { send(ws, { type: 'error', message: error instanceof Error ? error.message : 'Unable to process that action.' }); }

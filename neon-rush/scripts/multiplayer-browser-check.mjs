@@ -2,13 +2,15 @@ import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 
-const browser = await chromium.launch({ headless: true, ...(process.env.NEON_BROWSER ? { executablePath: process.env.NEON_BROWSER } : {}), args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'] });
+const browser = await chromium.launch({ headless: true, ...(process.env.NEON_BROWSER ? { executablePath: process.env.NEON_BROWSER } : {}), args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'] });
 const contexts = await Promise.all([
   browser.newContext({ viewport: { width: 1440, height: 1100 } }),
   browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }),
 ]);
 const errors = [];
-for (const context of contexts) await context.addInitScript(() => {
+for (const context of contexts) {
+  await context.grantPermissions(['microphone']);
+  await context.addInitScript(() => {
   localStorage.setItem('neon-rush-quality', 'false'); localStorage.setItem('neon-rush-sound', 'false');
   // Observe transport traffic without changing gameplay or client/server state.
   const Original = window.WebSocket;
@@ -20,11 +22,13 @@ for (const context of contexts) await context.addInitScript(() => {
         const message = JSON.parse(event.data);
         if (message.type === 'snapshot') window.__arenaSnapshot = message.room;
         if (message.type === 'session') window.__arenaId = message.id;
+        if (message.type === 'voice') { window.__arenaVoice ??= []; window.__arenaVoice.push(message.kind); }
       });
     }
     send(data) { const message = JSON.parse(data); if (message.type === 'input') window.__lastInput = message.input; return super.send(data); }
   };
-});
+  });
+}
 const [a, b] = await Promise.all(contexts.map(context => context.newPage()));
 for (const page of [a, b]) page.on('pageerror', error => errors.push(error.message));
 const base = process.env.NEON_URL || 'http://127.0.0.1:5187';
@@ -42,6 +46,12 @@ try {
   await b.getByRole('button', { name: 'JOIN ROOM', exact: true }).click();
   await b.locator('.arena-roster li').filter({ hasText: 'Alice' }).waitFor();
   await a.locator('.arena-roster li').filter({ hasText: 'Bob' }).waitFor();
+  await a.getByLabel('Chat message', { exact: true }).fill('glhf');
+  await a.getByRole('button', { name: 'Send chat', exact: true }).click();
+  await b.locator('.arena-chat li').filter({ hasText: 'glhf' }).waitFor();
+  await Promise.all([a, b].map(page => page.getByRole('button', { name: 'Enable microphone', exact: true }).click()));
+  await a.waitForFunction(() => window.__arenaSnapshot?.players.length === 2 && window.__arenaSnapshot.players.every(player => player.muted === false), undefined, { timeout: 10000 });
+  await a.waitForFunction(() => (window.__arenaVoice || []).some(kind => kind === 'offer' || kind === 'answer'), undefined, { timeout: 10000 });
   assert.equal(await a.getByRole('button', { name: 'START MATCH', exact: true }).isDisabled(), true);
   assert.equal(await b.getByRole('button', { name: 'START MATCH', exact: true }).count(), 0);
   await a.getByRole('button', { name: 'I’M READY', exact: true }).click();
@@ -119,7 +129,7 @@ try {
   await a.getByRole('button', { name: 'Pause game', exact: true }).click();
   await a.getByRole('heading', { name: 'ON PAUSE.', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'No browser runtime errors');
-  console.log(JSON.stringify({ result: 'passed', checks: ['separate players via room code and invite', 'ready and host permissions', 'shared countdown', 'remote movement', 'real mouse aim and damage', 'kill scoreboard', 'reload and respawn', 'refresh reconnect', 'simultaneous mobile move/aim/fire', 'dash', 'mobile overflow', 'disconnect result and rematch', 'return to solo'], errors }));
+  console.log(JSON.stringify({ result: 'passed', checks: ['separate players via room code and invite', 'ready and host permissions', 'room text chat', 'voice chat signaling', 'shared countdown', 'remote movement', 'real mouse aim and damage', 'kill scoreboard', 'reload and respawn', 'refresh reconnect', 'simultaneous mobile move/aim/fire', 'dash', 'mobile overflow', 'disconnect result and rematch', 'return to solo'], errors }));
 } catch (error) {
   await Promise.allSettled([a.screenshot({ path: 'test-results/multiplayer-failure-a.png', fullPage: true }), b.screenshot({ path: 'test-results/multiplayer-failure-b.png', fullPage: true })]);
   console.error('arena-state', await a.evaluate(() => ({ room: window.__arenaSnapshot, input: window.__lastInput })).catch(() => null)); throw error;

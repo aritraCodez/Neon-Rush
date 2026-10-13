@@ -69,25 +69,27 @@ export function RobotModel({ kind, color, bossLevel = 1 }: { kind: EnemyKind; co
   const flying = ENEMIES[kind].flying;
   const boss = kind === 'boss';
   return <group scale={boss ? [1.65, 1.65, 1.65] : kind === 'heavy' ? [1.15, 1.15, 1.15] : [1, 1, 1]}>
-    <mesh><boxGeometry args={[flying ? 1.3 : 0.9, flying ? 0.42 : 1.2, 0.65]} /><meshStandardMaterial color={dark} metalness={0.8} roughness={0.28} /></mesh>
-    <mesh position={[0, 0.65, 0.08]}><boxGeometry args={[boss ? 0.66 : 0.5, 0.43, 0.5]} /><meshStandardMaterial color="#433142" metalness={0.8} roughness={0.2} /></mesh>
-    <mesh position={[0, 0.69, 0.35]}><boxGeometry args={[0.4, 0.06, 0.05]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
-    <mesh position={[0, boss ? 0.3 : 0.18, 0.37]}><octahedronGeometry args={[boss ? 0.34 : 0.19]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={3} toneMapped={false} /></mesh>
+    <mesh position={[0, flying ? 0.05 : 0.1, 0]}><capsuleGeometry args={[flying ? 0.42 : 0.38, flying ? 0.12 : 0.55, 6, 14]} /><meshStandardMaterial color={dark} metalness={0.82} roughness={0.26} /></mesh>
+    <mesh position={[0, flying ? 0.38 : 0.62, 0.04]}><sphereGeometry args={[boss ? 0.36 : 0.28, 16, 12]} /><meshStandardMaterial color="#433142" metalness={0.8} roughness={0.22} /></mesh>
+    <mesh position={[0, flying ? 0.4 : 0.64, 0.26]}><boxGeometry args={[0.36, 0.07, 0.04]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
+    <mesh position={[0, boss ? 0.28 : 0.16, 0.34]}><sphereGeometry args={[boss ? 0.22 : 0.14, 12, 10]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={3} toneMapped={false} /></mesh>
     {[-1, 1].map(side => <group key={side}>
-      <mesh position={[side * (flying ? 0.85 : 0.64), flying ? 0 : 0.25, 0]} rotation={[0, 0, side * 0.12]}><boxGeometry args={[boss ? 0.6 : 0.32, flying ? 0.25 : 0.82, boss ? 0.8 : 0.4]} /><meshStandardMaterial color={brass} metalness={0.7} roughness={0.3} /></mesh>
-      <mesh position={[side * (flying ? 0.85 : 0.64), -0.12, 0.38]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.12, 0.15, 0.42, 8]} /><meshStandardMaterial color="#141c2c" metalness={0.8} roughness={0.3} /></mesh>
-      <mesh position={[side * (flying ? 0.85 : 0.64), -0.12, 0.62]}><circleGeometry args={[0.09, 12]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
+      <mesh position={[side * (flying ? 0.72 : 0.52), flying ? 0.08 : 0.28, 0]} rotation={[0, 0, side * 0.35]}>
+        <capsuleGeometry args={[boss ? 0.18 : 0.12, flying ? 0.18 : 0.42, 5, 12]} /><meshStandardMaterial color={brass} metalness={0.74} roughness={0.28} />
+      </mesh>
+      <mesh position={[side * (flying ? 0.85 : 0.64), -0.08, 0.32]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.11, 0.14, 0.38, 12]} /><meshStandardMaterial color="#141c2c" metalness={0.8} roughness={0.28} /></mesh>
+      <mesh position={[side * (flying ? 0.85 : 0.64), -0.08, 0.54]}><sphereGeometry args={[0.09, 12, 8]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
       {!flying && <group>
-        <mesh position={[side * 0.3, -0.85, 0]}><boxGeometry args={[0.29, 0.75, 0.35]} /><meshStandardMaterial color="#322f40" metalness={0.7} roughness={0.3} /></mesh>
-        <mesh position={[side * 0.3, -1.16, 0.14]}><boxGeometry args={[0.38, 0.16, 0.64]} /><meshStandardMaterial color={brass} metalness={0.7} roughness={0.3} /></mesh>
+        <mesh position={[side * 0.22, -0.72, 0]}><capsuleGeometry args={[0.12, 0.38, 5, 12]} /><meshStandardMaterial color="#322f40" metalness={0.72} roughness={0.28} /></mesh>
+        <mesh position={[side * 0.22, -1.08, 0.12]}><boxGeometry args={[0.34, 0.14, 0.52]} /><meshStandardMaterial color={brass} metalness={0.74} roughness={0.28} /></mesh>
       </group>}
-      {flying && <mesh position={[side * 0.85, -0.21, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.18, 0.25, 16]} /><meshBasicMaterial color={color} side={THREE.DoubleSide} toneMapped={false} /></mesh>}
+      {flying && <mesh position={[side * 0.78, -0.18, 0]} rotation={[-Math.PI / 2, 0, 0]}><torusGeometry args={[0.2, 0.035, 8, 18]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>}
     </group>)}
     {boss && <>
-      <mesh position={[0, 0.4, -0.25]} rotation={[0, 0, Math.PI / 4]}><torusGeometry args={[1.3 + bossLevel * 0.07, 0.045, 5, bossLevel === 3 ? 3 : 6]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
-      {bossLevel >= 4 && [-1, 1].map(side => <mesh key={side} position={[side * 1.75, 0.65, -0.2]} rotation={[0, 0, side * 0.24]}><boxGeometry args={[1.5, 0.16, 0.7]} /><meshStandardMaterial color={brass} emissive={color} emissiveIntensity={0.2} metalness={0.8} roughness={0.3} /></mesh>)}
+      <mesh position={[0, 0.4, -0.25]} rotation={[0, 0, Math.PI / 4]}><torusGeometry args={[1.3 + bossLevel * 0.07, 0.045, 8, bossLevel === 3 ? 3 : 24]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
+      {bossLevel >= 4 && [-1, 1].map(side => <mesh key={side} position={[side * 1.75, 0.65, -0.2]} rotation={[0, 0, side * 0.24]}><capsuleGeometry args={[0.12, 1.1, 4, 10]} /><meshStandardMaterial color={brass} emissive={color} emissiveIntensity={0.2} metalness={0.8} roughness={0.3} /></mesh>)}
     </>}
-    {kind === 'turret' && <mesh position={[0, -0.95, 0]}><cylinderGeometry args={[0.7, 0.9, 0.35, 6]} /><meshStandardMaterial color={brass} /></mesh>}
+    {kind === 'turret' && <mesh position={[0, -0.95, 0]}><cylinderGeometry args={[0.7, 0.9, 0.35, 10]} /><meshStandardMaterial color={brass} metalness={0.7} roughness={0.3} /></mesh>}
   </group>;
 }
 

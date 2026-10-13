@@ -9,6 +9,10 @@ export function cleanName(value) {
   if (name.length < 2 || name.length > 18) throw new Error('Use a name with 2–18 letters, numbers, or spaces.');
   return name;
 }
+export function cleanChat(value) {
+  if (typeof value !== 'string') return '';
+  return value.normalize('NFKC').replace(/[\p{Cc}\p{Cs}]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
 
 export function segmentBox(x, z, dx, dz, box, radius = 0) {
   let lo = 0, hi = 1;
@@ -36,7 +40,7 @@ function blocked(x, z) {
 export class ArenaRoom {
   constructor(code, clock = Date.now) {
     this.code = code; this.clock = clock; this.hostId = ''; this.phase = 'lobby'; this.round = 0;
-    this.players = new Map(); this.bullets = []; this.events = []; this.nextId = 0;
+    this.players = new Map(); this.bullets = []; this.events = []; this.chat = []; this.nextId = 0;
     this.phaseUntil = 0; this.matchEnds = 0; this.winners = []; this.endReason = '';
   }
   notice(text, kind = 'notice') { this.events.unshift({ id: ++this.nextId, text, kind }); this.events.length = Math.min(this.events.length, 5); }
@@ -50,9 +54,9 @@ export class ArenaRoom {
     const player = {
       id, name, style: ['ion', 'nova', 'solar', 'toxic'].includes(style) ? style : 'ion', color,
       ...spawn, angle: Math.atan2(spawn.x, spawn.z), hp: 100, kills: 0, deaths: 0,
-      connected: true, ready: false, respawnIn: 0, shield: 0, dashCooldown: 0, dashTime: 0,
+      connected: true, ready: false, muted: true, respawnIn: 0, shield: 0, dashCooldown: 0, dashTime: 0,
       ammo: ARENA.magazine, reload: 0, cooldown: 0, moving: false, shots: 0, hit: 0,
-      input: neutral(), inputAt: 0, dashQueued: false, reloadQueued: false, disconnectedAt: 0,
+      input: neutral(), inputAt: 0, dashQueued: false, reloadQueued: false, disconnectedAt: 0, lastChatAt: 0,
     };
     this.players.set(id, player); if (!this.hostId) this.hostId = id;
     this.notice(`${name} joined the room.`); return player;
@@ -75,6 +79,19 @@ export class ArenaRoom {
   ready(id, value) {
     if (this.phase !== 'lobby' || typeof value !== 'boolean') throw new Error('Ready checks are available in the lobby.');
     const player = this.players.get(id); if (player?.connected) player.ready = value;
+  }
+  setMuted(id, muted) {
+    const player = this.players.get(id); if (player?.connected) player.muted = muted === true;
+  }
+  addChat(id, raw) {
+    const player = this.players.get(id); if (!player?.connected) return null;
+    const now = this.clock();
+    if (now - player.lastChatAt < 400) return null;
+    const text = cleanChat(raw); if (!text) return null;
+    player.lastChatAt = now;
+    const message = { id: ++this.nextId, from: id, name: player.name, color: player.color, text, at: now };
+    this.chat.push(message); if (this.chat.length > 40) this.chat.splice(0, this.chat.length - 40);
+    return message;
   }
   start(id) {
     if (id !== this.hostId) throw new Error('Only the room host can start the match.');
@@ -183,12 +200,12 @@ export class ArenaRoom {
       countdown: this.phase === 'countdown' ? Math.max(0, (this.phaseUntil - now) / 1000) : 0,
       players: [...this.players.values()].map(p => ({
         id: p.id, name: p.name, style: p.style, color: p.color, x: round(p.x), z: round(p.z), angle: round(p.angle),
-        hp: p.hp, kills: p.kills, deaths: p.deaths, connected: p.connected, ready: p.ready,
+        hp: p.hp, kills: p.kills, deaths: p.deaths, connected: p.connected, ready: p.ready, muted: p.muted,
         respawnIn: round(p.respawnIn), shield: round(p.shield), dashCooldown: round(p.dashCooldown), dashing: p.dashTime > 0,
         ammo: p.ammo, reload: round(p.reload), moving: p.moving, shots: p.shots, hit: round(p.hit),
       })),
       bullets: this.bullets.map(({ life: _life, ...bullet }) => ({ ...bullet, x: round(bullet.x), z: round(bullet.z) })),
-      events: this.events, winners: this.winners, endReason: this.endReason, serverTime: now,
+      events: this.events, chat: this.chat, winners: this.winners, endReason: this.endReason, serverTime: now,
     };
   }
 }

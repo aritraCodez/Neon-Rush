@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react';
-import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Radio, RotateCcw, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
+import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Headphones, Mic, MicOff, Radio, RotateCcw, Send, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
 import { ArenaClient } from './client';
 import { ArenaScene } from './ArenaScene';
 import { useArenaControls } from './useArenaControls';
+import { useVoiceChat, type VoiceChat, type VoiceSnapshot } from './voice';
 import type { ArenaControls } from './useArenaControls';
-import type { ArenaPlayer } from '../../shared/multiplayer';
+import type { ArenaChat, ArenaPlayer } from '../../shared/multiplayer';
 import { ARENA, ARENA_COVER } from '../../shared/arena.js';
 import type { RunnerStyle } from '../game/runnerStyle';
 import { audio } from '../game/audio';
@@ -40,6 +41,32 @@ function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls
   </div>;
 }
 
+function ChatPanel({ client, messages, playerId, compact, disabled }: { client: ArenaClient; messages: ArenaChat[]; playerId: string; compact?: boolean; disabled: boolean }) {
+  const [draft, setDraft] = useState('');
+  const log = useRef<HTMLUListElement>(null);
+  useEffect(() => { log.current?.scrollTo(0, log.current.scrollHeight); }, [messages.length]);
+  return <div className={`arena-chat ${compact ? 'compact' : ''}`}>
+    <span>ROOM CHAT</span>
+    <ul ref={log} aria-live="polite">{messages.length ? messages.map(message => <li key={message.id} className={message.from === playerId ? 'self' : ''}><b style={{ color: message.color }}>{message.name}</b><span>{message.text}</span></li>) : <li className="empty">No messages yet. Say hello.</li>}</ul>
+    <form onSubmit={event => { event.preventDefault(); const text = draft.trim(); if (!text || disabled) return; client.chat(text); setDraft(''); }}>
+      <input aria-label="Chat message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={80} placeholder={disabled ? 'Reconnect to chat' : 'Message the room'} disabled={disabled} autoComplete="off" />
+      <button type="submit" aria-label="Send chat" disabled={disabled || !draft.trim()}><Send size={14} /></button>
+    </form>
+  </div>;
+}
+
+function VoiceDock({ voice, state, compact }: { voice: VoiceChat; state: VoiceSnapshot; compact?: boolean }) {
+  const micOn = state.live && !state.muted;
+  return <div className={`arena-voice ${compact ? 'compact' : ''} ${state.talking.local ? 'is-talking' : ''}`}>
+    {!state.live ? <button className="arena-voice-main" onClick={() => void voice.enable()} aria-label="Enable microphone"><Mic size={15} />ENABLE MIC</button> : <>
+      <button className={micOn ? 'is-live' : ''} aria-pressed={micOn} aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'} onClick={() => voice.setMuted(!state.muted)}>{micOn ? <Mic size={15} /> : <MicOff size={15} />}{micOn ? 'MIC ON' : 'MIC MUTED'}</button>
+      <button aria-pressed={!state.deafened} aria-label={state.deafened ? 'Hear teammates' : 'Deafen voice chat'} onClick={() => voice.setDeafened(!state.deafened)}>{state.deafened ? <VolumeX size={15} /> : <Headphones size={15} />}{state.deafened ? 'DEAFEN' : 'HEARING'}</button>
+      <button className={state.ptt ? 'is-live' : ''} aria-label="Hold to talk" onPointerDown={event => { event.preventDefault(); voice.setPtt(true); }} onPointerUp={() => voice.setPtt(false)} onPointerCancel={() => voice.setPtt(false)} onPointerLeave={() => voice.setPtt(false)}>TALK</button>
+    </>}
+    <small>{state.error || (state.live ? (state.muted ? 'Muted — hold V or TALK' : 'Voice live with this room') : 'Talk with everyone in this room')}</small>
+  </div>;
+}
+
 export default function Multiplayer({ onExit, style, sound, onSound }: { onExit: () => void; style: RunnerStyle; sound: boolean; onSound: () => void }) {
   const [client] = useState(() => new ArenaClient());
   const connection = useSyncExternalStore(client.subscribe, client.getSnapshot);
@@ -53,6 +80,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   const own = room?.players.find(player => player.id === playerId);
   const active = room?.phase === 'playing' && status === 'connected' && !graphicsFailed && (own?.hp ?? 0) > 0;
   const controls = useArenaControls(client, active);
+  const { voice, ...voiceState } = useVoiceChat(client);
   const effects = useRef({ shots: 0, hp: 100, kills: 0, round: 0 });
   useEffect(() => { client.connect(); return () => client.dispose(); }, [client]);
   useEffect(() => {
@@ -109,7 +137,9 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
           </> : <>
             <div className="arena-room-title"><div><span>YOUR PRIVATE ROOM</span><h2>{room.code}</h2></div><button className="arena-copy" onClick={() => void copyInvite()}><Copy size={16} />INVITE</button></div><p className="arena-copy-status" role="status">{copied || 'Send this code to your friends to join.'}</p>
             <div className="arena-roster-title"><span>LIVE PLAYERS</span><b>{room.players.filter(player => player.connected).length} / {ARENA.maxPlayers}</b></div>
-            <ul className="arena-roster">{room.players.map(player => <li key={player.id}><span className="player-avatar" style={{ '--player-color': player.color } as CSSProperties}>{player.name.slice(0, 2).toUpperCase()}</span><div><strong>{player.name}{player.id === playerId && <small> YOU</small>}</strong><span>{!player.connected ? 'Reconnecting…' : player.id === room.hostId ? 'Room host' : 'Connected'}</span></div>{player.id === room.hostId && <Crown size={15} className="host-crown" />}<b className={player.ready ? 'player-ready' : 'player-waiting'}>{!player.connected ? 'OFFLINE' : player.ready ? 'READY' : 'WAITING'}</b></li>)}</ul>
+            <ul className="arena-roster">{room.players.map(player => <li key={player.id} className={voiceState.talking[player.id] ? 'is-talking' : ''}><span className="player-avatar" style={{ '--player-color': player.color } as CSSProperties}>{player.name.slice(0, 2).toUpperCase()}</span><div><strong>{player.name}{player.id === playerId && <small> YOU</small>}</strong><span>{!player.connected ? 'Reconnecting…' : voiceState.talking[player.id] ? 'Speaking' : player.muted ? 'Mic muted' : player.id === room.hostId ? 'Room host' : 'Voice ready'}</span></div>{player.muted ? <MicOff size={14} className="voice-mute-icon" /> : <Mic size={14} className={`voice-mic-icon ${voiceState.talking[player.id] ? 'is-talking' : ''}`} />}{player.id === room.hostId && <Crown size={15} className="host-crown" />}<b className={player.ready ? 'player-ready' : 'player-waiting'}>{!player.connected ? 'OFFLINE' : player.ready ? 'READY' : 'WAITING'}</b></li>)}</ul>
+            <VoiceDock voice={voice} state={voiceState} />
+            <ChatPanel client={client} messages={connection.chat} playerId={playerId} disabled={!connected} />
             <button className={`arena-ready-button ${own?.ready ? 'is-ready' : ''}`} aria-pressed={own?.ready ?? false} disabled={!connected} onClick={() => { audio.unlock(); client.send({ type: 'ready', ready: !own?.ready }); }}><Check size={17} />{own?.ready ? 'READY — CLICK TO UNREADY' : 'I’M READY'}</button>
             {host && <button className="primary-button" disabled={!connected || !canStart} onClick={() => { audio.unlock(); client.send({ type: 'start' }); }}><Swords size={18} />START MATCH</button>}
             <p className="arena-connection-note">{room.players.length < 2 ? 'Invite at least one friend to start a match.' : host ? 'Start when every player is connected and ready.' : 'The host will start when everyone is ready.'}</p>
@@ -118,10 +148,11 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
         </section>
       </div> : <div className="arena-match-layout">
         <section className="arena-stage" aria-label="Live multiplayer arena">
-          <div className="arena-canvas"><ArenaScene room={room} playerId={playerId} controls={controls} onError={graphicsError} /></div>
+          <div className="arena-canvas"><ArenaScene room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
           <div className="arena-match-top"><span><i /> THE EXCHANGE</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button></div>
-          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload.</p><p>Touch: left pad moves, right pad aims and fires. Online matches keep running when you switch tabs.</p></div>}
+          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload · <b>V:</b> hold to talk.</p><p>Touch: left pad moves, right pad aims and fires. Use room chat or enable mic to talk with the room.</p></div>}
           <div className="arena-kill-feed" aria-live="polite">{room.events.filter(event => event.kind === 'kill').slice(0, 3).map(event => <span key={event.id}><Crosshair size={11} />{event.text}</span>)}</div>
+          <div className="arena-chat-feed" aria-live="polite">{connection.chat.slice(-3).map(message => <span key={message.id}><b style={{ color: message.color }}>{message.name}</b> {message.text}</span>)}</div>
           <div className="arena-radar" role="img" aria-label="Live map of every connected player"><span>LIVE RADAR</span><div>{ARENA_COVER.map((box, index) => <i key={index} style={{ left: `${(box.x / ARENA.width + 0.5) * 100}%`, top: `${(box.z / ARENA.depth + 0.5) * 100}%`, width: `${box.width / ARENA.width * 100}%`, height: `${box.depth / ARENA.depth * 100}%` }} />)}{room.players.filter(player => player.connected && player.hp > 0).map(player => <b key={player.id} title={player.name} className={player.id === playerId ? 'self' : ''} style={{ left: `${(player.x / ARENA.width + 0.5) * 100}%`, top: `${(player.z / ARENA.depth + 0.5) * 100}%`, background: player.color }} />)}</div></div>
           {room.phase === 'countdown' && <div className="arena-center-overlay"><span>ALL RUNNERS CONNECTED</span><strong>{Math.max(1, Math.ceil(room.countdown))}</strong><p>Get ready. Watch your corners.</p></div>}
           {room.phase === 'playing' && own && own.hp <= 0 && <div className="arena-respawn" role="status"><strong>REBOOTING IN {Math.max(1, Math.ceil(own.respawnIn))}</strong><span>You’ll rejoin the fight with full health.</span></div>}
@@ -134,7 +165,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
           {room.phase === 'finished' && <div className="arena-result-overlay"><div className="arena-result-card"><Trophy size={34} /><span>ROUND {room.round} COMPLETE</span><h2>{room.winners.length > 1 ? 'SHARED VICTORY' : room.winners.includes(playerId) ? 'YOU WIN.' : 'GOOD FIGHT.'}</h2><p>{room.endReason}</p><ol>{[...room.players].sort(byScore).map(player => <li key={player.id}><span style={{ color: player.color }}>{player.name}{player.id === playerId ? ' (you)' : ''}</span><b>{player.kills} K <small>/ {player.deaths} D</small></b></li>)}</ol>{host ? <button className="primary-button" disabled={!connected} onClick={() => client.send({ type: 'lobby' })}><RotateCcw size={16} />REMATCH LOBBY</button> : <p>Waiting for the host to open a rematch.</p>}<button className="text-button" onClick={leave}>Leave arena</button></div></div>}
           {(!connected || graphicsFailed) && <div className="arena-network-overlay" role="status"><Wifi size={30} /><strong>{graphicsFailed ? 'Graphics unavailable' : 'Reconnecting…'}</strong><p>{graphicsFailed ? 'Reload with WebGL enabled to return to the arena.' : 'Your match continues. Rejoin within 20 seconds to keep your place.'}</p><button className="arena-small-button" onClick={leave}>BACK TO SOLO</button></div>}
         </section>
-        <aside className="arena-scoreboard"><div className="arena-scoreboard-heading"><div><span>LIVE STANDINGS</span><h2>The contenders.</h2></div><Users size={20} /></div><div className="arena-score-columns"><span>PLAYER</span><span>K / D</span></div><ol>{[...room.players].sort(byScore).map((player, index) => <li key={player.id} className={player.id === playerId ? 'self' : ''}><span className="arena-rank">{index + 1}</span><div><strong><i style={{ background: player.connected ? player.color : '#687789' }} />{player.name}{player.id === playerId && <small> YOU</small>}</strong><span>{!player.connected ? 'Reconnecting' : player.hp <= 0 ? 'Respawning' : `${player.hp} HP`}</span></div><b>{player.kills}<small> / {player.deaths}</small></b></li>)}</ol><div className="arena-room-footer"><span>ROOM CODE</span><strong>{room.code}</strong><small><Wifi size={12} />{connected && connection.latency !== null ? `${connection.latency} ms` : 'Reconnecting'}</small></div><button className="arena-small-button" onClick={leave}><DoorOpen size={14} />LEAVE MATCH</button><p>The match continues if you leave.</p></aside>
+        <aside className="arena-scoreboard"><div className="arena-scoreboard-heading"><div><span>LIVE STANDINGS</span><h2>The contenders.</h2></div><Users size={20} /></div><VoiceDock voice={voice} state={voiceState} compact /><ChatPanel client={client} messages={connection.chat} playerId={playerId} compact disabled={!connected} /><div className="arena-score-columns"><span>PLAYER</span><span>K / D</span></div><ol>{[...room.players].sort(byScore).map((player, index) => <li key={player.id} className={`${player.id === playerId ? 'self' : ''} ${voiceState.talking[player.id] ? 'is-talking' : ''}`}><span className="arena-rank">{index + 1}</span><div><strong><i style={{ background: player.connected ? player.color : '#687789' }} />{player.name}{player.id === playerId && <small> YOU</small>}{voiceState.talking[player.id] ? <Mic size={11} /> : player.muted ? <MicOff size={11} /> : null}</strong><span>{!player.connected ? 'Reconnecting' : voiceState.talking[player.id] ? 'Speaking' : player.hp <= 0 ? 'Respawning' : `${player.hp} HP`}</span></div><b>{player.kills}<small> / {player.deaths}</small></b></li>)}</ol><div className="arena-room-footer"><span>ROOM CODE</span><strong>{room.code}</strong><small><Wifi size={12} />{connected && connection.latency !== null ? `${connection.latency} ms` : 'Reconnecting'}</small></div><button className="arena-small-button" onClick={leave}><DoorOpen size={14} />LEAVE MATCH</button><p>The match continues if you leave.</p></aside>
       </div>}
     </main>
     <footer><span>ONE ARENA. REAL PLAYERS. <b>MAKE YOUR NAME.</b></span><span><i /> LIVE MULTIPLAYER</span></footer>

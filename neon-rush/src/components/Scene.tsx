@@ -182,7 +182,7 @@ function Runner({ style }: { style: RunnerStyle }) {
   return <>
     <group ref={ref}>
       <RunnerModel style={style} weapon={weapon} pose={() => ({
-        motion: game.arena ? 'aim' : (game.phase === 'running' || game.phase === 'paused') && game.y === 0 && game.slide <= 0 ? 'run' : 'idle',
+        motion: game.arena ? 'aim' : game.slide > 0 ? 'idle' : game.y > 0.12 ? 'jump' : (game.phase === 'running' || game.phase === 'paused') ? 'run' : 'idle',
         time: game.phase === 'menu' ? idleTime.current : game.elapsed,
       })} />
       <mesh ref={muzzle} position={[0.43, 1.15, -1.12]} visible={false}><octahedronGeometry args={[0.16]} /><meshBasicMaterial color={style.color} toneMapped={false} /></mesh>
@@ -198,9 +198,11 @@ function World({ highQuality, levelId, runnerStyle }: { highQuality: boolean; le
   return <>
     <color attach="background" args={[level.sky]} />
     <fog attach="fog" args={[level.sky, 32, 150]} />
-    <ambientLight intensity={1.2} color="#c8a4cc" />
-    <directionalLight position={[5, 12, 5]} intensity={2.5} color="#b6d9ff" />
-    <pointLight position={[0, 6, -22]} color={PINK} intensity={90} distance={55} />
+    <hemisphereLight intensity={0.55} color="#9ecbff" groundColor="#1a1028" />
+    <ambientLight intensity={0.42} color="#b7a0c8" />
+    <directionalLight position={[6, 12, 4]} intensity={2.1} color="#e7f3ff" />
+    <directionalLight position={[-7, 3, -6]} intensity={1.55} color="#ff4fb8" />
+    <pointLight position={[0, 6, -22]} color={PINK} intensity={70} distance={55} />
     <Simulation /><Sky /><City /><District levelId={levelId} /><Track />
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.16, -60]}><planeGeometry args={[240, 240]} /><meshStandardMaterial color="#282333" metalness={0.7} roughness={0.32} /></mesh>
     <CombatScene levelId={levelId} />
