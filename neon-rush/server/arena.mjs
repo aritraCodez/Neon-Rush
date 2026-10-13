@@ -90,7 +90,7 @@ export class ArenaRoom {
     const text = cleanChat(raw); if (!text) return null;
     player.lastChatAt = now;
     const message = { id: ++this.nextId, from: id, name: player.name, color: player.color, text, at: now };
-    this.chat.push(message); if (this.chat.length > 40) this.chat.splice(0, this.chat.length - 40);
+    this.chat.push(message); if (this.chat.length > 80) this.chat.splice(0, this.chat.length - 80);
     return message;
   }
   start(id) {

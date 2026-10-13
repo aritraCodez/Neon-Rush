@@ -13,6 +13,16 @@ function readChat(value: unknown): ArenaChat | null {
   if (typeof message.id !== 'number' || typeof message.from !== 'string' || typeof message.name !== 'string' || typeof message.text !== 'string') return null;
   return { id: message.id, from: message.from, name: message.name.slice(0, 18), color: typeof message.color === 'string' ? message.color : '#8eb6d3', text: message.text.slice(0, 80), at: Number.isFinite(message.at) ? message.at : 0 };
 }
+function parseChat(value: unknown) {
+  return Array.isArray(value) ? value.flatMap(entry => { const item = readChat(entry); return item ? [item] : []; }) : [];
+}
+function mergeChat(current: ArenaChat[], incoming: ArenaChat[]) {
+  if (!incoming.length) return current;
+  const byId = new Map<number, ArenaChat>();
+  for (const item of current) byId.set(item.id, item);
+  for (const item of incoming) byId.set(item.id, item);
+  return [...byId.values()].sort((a, b) => a.at - b.at || a.id - b.id).slice(-80);
+}
 const SESSION_KEY = 'neon-rush-arena-session';
 function readSession(): Session | null {
   try { const value = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); return value && typeof value.id === 'string' && /^[a-f0-9]{64}$/.test(value.token) && /^[A-Z2-9]{6}$/.test(value.code) ? value : null; }
@@ -88,21 +98,17 @@ export class ArenaClient {
           this.clearPending(); this.patch({ playerId: message.id, error: '' }); break;
         case 'snapshot':
           if (message.room && Array.isArray(message.room.players) && Array.isArray(message.room.bullets)) {
-            const chat = Array.isArray(message.room.chat)
-              ? message.room.chat.flatMap((entry: unknown) => { const item = readChat(entry); return item ? [item] : []; }).slice(-40)
-              : this.state.chat;
-            this.patch({ room: message.room, chat });
+            this.patch({ room: message.room, chat: Array.isArray(message.room.chat) ? mergeChat(this.state.chat, parseChat(message.room.chat)) : this.state.chat });
           }
           break;
         case 'hello': case 'presence': if (Number.isFinite(message.online)) this.patch({ online: message.online }); break;
         case 'pong': if (Number.isFinite(message.sent)) this.patch({ latency: Math.max(0, Date.now() - message.sent) }); break;
         case 'chat': {
           const chat = readChat(message.message); if (!chat) break;
-          if (this.state.chat.some(item => item.id === chat.id)) break;
-          this.patch({ chat: [...this.state.chat, chat].slice(-40) }); break;
+          this.patch({ chat: mergeChat(this.state.chat, [chat]) }); break;
         }
         case 'chat-history':
-          this.patch({ chat: Array.isArray(message.messages) ? message.messages.flatMap((entry: unknown) => { const chat = readChat(entry); return chat ? [chat] : []; }).slice(-40) : [] }); break;
+          this.patch({ chat: mergeChat(this.state.chat, parseChat(message.messages)) }); break;
         case 'voice':
           if (typeof message.from === 'string' && (message.kind === 'offer' || message.kind === 'answer' || message.kind === 'ice')) {
             this.voiceListeners.forEach(listener => listener(message as VoiceInbound));
