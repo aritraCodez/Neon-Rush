@@ -56,6 +56,11 @@ Without this value, the production game shows that the online arena is unavailab
 | Fire | Hold left mouse button or F | Hold/drag right pad |
 | Dash | Space / Shift while moving | Dash while moving |
 | Reload | R or Reload button | Reload button |
+| Voice chat | Enable Mic, then hold V | Enable Mic, then hold TALK |
+| Mute / deafen | MIC MUTED / HEARING buttons | Same buttons in the voice dock |
+| Text chat | Type in Room Chat, Enter to send | Same Room Chat field |
+
+Voice is peer-to-peer WebRTC audio inside the room. Text chat stays in the current room (80 characters, rate-limited) and is replayed if a player reconnects. The arena WebSocket only relays offers, answers, and ICE candidates; it does not mix or store audio. STUN is used to traverse typical home NATs. Some strict networks still need a TURN server, which this deployment does not include. Mic starts muted until a player enables it. Hold **V** or **TALK** for push-to-talk while muted.
 
 Rooms hold 2–6 players. Everyone must be ready. Rounds last 3 minutes or end when someone reaches 10 eliminations. The highest elimination count wins; equal counts share the win. Players respawn after 3 seconds. Spawn shields last 1.5 seconds, and firing ends protection. Cover stops movement and shots. The server controls movement speed, ammunition, damage, respawns, and results. Weapon/armor upgrades from solo play do not change PvP stats.
 

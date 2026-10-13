@@ -12,18 +12,53 @@ npm install
 npm run dev
 ```
 
-Open the local URL Vite prints. To create and serve the production build:
+Open the local URL Vite prints (default `http://127.0.0.1:5173`). Solo campaign and Runner Lab work with this command alone. To create and serve the production build:
 
 ```sh
 npm run build
 npm run preview
 ```
 
+## Arena server setup
+
+Online PvP and voice chat need the Node WebSocket server in a second terminal. From `neon-rush/`, install it once, then start both processes:
+
+```sh
+npm ci --prefix server
+```
+
+Terminal 1 — arena backend (port `3001`):
+
+```sh
+npm run server
+```
+
+Terminal 2 — game client:
+
+```sh
+npm run dev
+```
+
+Vite proxies `/ws` to `ws://127.0.0.1:3001`, so no `.env` file is required for local play. Open **Multiplayer Arena**, create or join a room, and share the six-character code. Confirm the backend with `http://127.0.0.1:3001/health` (`status: "ok"`).
+
+If the client uses another port or a LAN hostname, set `ALLOWED_ORIGINS` on the server to that exact frontend origin (no trailing slash). The default allowlist includes `http://127.0.0.1:5173`, `http://localhost:5173`, and `http://127.0.0.1:5187`.
+
+```sh
+# PowerShell
+$env:ALLOWED_ORIGINS="http://127.0.0.1:5173"; npm run server
+```
+
+For a local production preview, build with `VITE_MULTIPLAYER_URL=http://127.0.0.1:3001` and allow that preview origin on the backend.
+
+```sh
+npm run test:multiplayer
+```
+
 ## Multiplayer arena
 
-Choose **Multiplayer Arena**, enter a name, and create or join a room. Up to six friends can fight in the same 3D arena with live nameplates, health, radar, scores, respawns, and rematches. Keyboard/mouse and touch controls are supported. The server calculates movement, damage, and results.
+Choose **Multiplayer Arena**, enter a name, and create or join a room. Up to six friends can fight in the same 3D arena with live nameplates, health, radar, scores, respawns, rematches, room text chat, and voice chat. Keyboard/mouse and touch controls are supported. The server calculates movement, damage, and results. Type in **Room Chat** to message the lobby or match. Voice is peer-to-peer; enable the mic in the room, then hold **V** or **TALK**.
 
-The production frontend can remain on Render Static Sites. Deploy the new WebSocket backend and set the frontend's `VITE_MULTIPLAYER_URL` before rebuilding. Follow the [Render multiplayer deployment guide](neon-rush/docs/MULTIPLAYER-RENDER.md); the root `render.yaml` adds only the backend service.
+The production frontend can remain on Render Static Sites. Deploy the WebSocket backend and set the frontend's `VITE_MULTIPLAYER_URL` before rebuilding. Follow the [Render multiplayer deployment guide](neon-rush/docs/MULTIPLAYER-RENDER.md); the root `render.yaml` adds only the backend service.
 
 ## Interactive 3D Runner Lab
 
