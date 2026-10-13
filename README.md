@@ -1,12 +1,13 @@
 # Neon Rush 
  
-A complete 3D endless runner built with React 19, TypeScript, Vite, React Three Fiber, and Three.js. Everything in the circuit is rendered in real time; no models, textures, audio files, API keys, or backend are required.
+A 3D action game built with React 19, TypeScript, Vite, React Three Fiber, and Three.js. Solo gameplay and Runner Lab render procedural models locally without external game assets or a backend. Online PvP uses the included Node WebSocket server.
 
 ## Run locally
 
 Use Node.js 22.15 or newer.
 
 ```sh
+cd neon-rush
 npm install
 npm run dev
 ```
@@ -18,7 +19,19 @@ npm run build
 npm run preview
 ```
 
-## Controls
+## Multiplayer arena
+
+Choose **Multiplayer Arena**, enter a name, and create or join a room. Up to six friends can fight in the same 3D arena with live nameplates, health, radar, scores, respawns, and rematches. Keyboard/mouse and touch controls are supported. The server calculates movement, damage, and results.
+
+The production frontend can remain on Render Static Sites. Deploy the new WebSocket backend and set the frontend's `VITE_MULTIPLAYER_URL` before rebuilding. Follow the [Render multiplayer deployment guide](neon-rush/docs/MULTIPLAYER-RENDER.md); the root `render.yaml` adds only the backend service.
+
+## Interactive 3D Runner Lab
+
+Use **Enter Runner Lab** below the game to rotate and zoom the articulated character, choose one of four armor finishes, preview every weapon, inspect its wireframe, and play Idle, Run, Jump, or Aim animations. Armor changes carry into gameplay and are saved locally. Opening the lab pauses an active run.
+
+**Export 3D Model** downloads the selected character and four animations as a GLB. See the [Blender and Unreal workflow](neon-rush/docs/3D-WORKFLOW.md) for editing and import guidance. No native editor installation is needed to play or use the lab.
+
+## Gameplay controls
 
 | Action | Keyboard | Touch |
 | --- | --- | --- |
@@ -63,4 +76,4 @@ The optional WebMCP integration is feature-detected and does nothing in ordinary
 
 ## Deployment
 
-Upload `dist/` to a static host after building. The project includes a Sites hosting manifest. Fonts are optionally fetched from Google Fonts with local system fallbacks; gameplay does not depend on that request. No external game assets are loaded.
+Upload `neon-rush/dist/` to a static host after building. The root `render.yaml` configures a separate Render multiplayer backend; see the [multiplayer deployment guide](neon-rush/docs/MULTIPLAYER-RENDER.md) to connect it to the existing Static Site. Fonts are optionally fetched from Google Fonts with local system fallbacks; gameplay does not depend on that request. No external game assets are loaded.

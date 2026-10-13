@@ -1,4 +1,4 @@
-import { Component, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
@@ -9,6 +9,9 @@ import { CombatScene, District } from './CombatScene';
 import { getLevel } from '../game/levels';
 import { inCombat } from '../game/combat';
 import { weaponById } from '../game/weapons';
+import { RunnerModel } from './RunnerModel';
+import type { RunnerStyle } from '../game/runnerStyle';
+import { GraphicsLifecycle } from './GraphicsLifecycle';
 
 const CYAN = '#46eeff';
 const PINK = '#ff2a9b';
@@ -151,73 +154,46 @@ function EntityBatch({ kind }: { kind: EntityKind }) {
   </>;
 }
 
-function Limb({ side, leg }: { side: number; leg?: boolean }) {
-  const ref = useRef<THREE.Group>(null);
-  useFrame(() => {
-    if (!ref.current) return;
-    const active = game.phase === 'running';
-    const swing = active && game.y < 0.1 && game.slide <= 0 ? Math.sin(game.elapsed * 14 + (side > 0 ? Math.PI : 0)) * 0.8 : 0.15;
-    ref.current.rotation.x = leg ? swing : -swing;
-  });
-  return <group ref={ref} position={[side * (leg ? 0.19 : 0.43), leg ? 0.78 : 1.36, 0]}>
-    <mesh position={[0, -0.23, 0]}><capsuleGeometry args={[leg ? 0.125 : 0.095, 0.29, 3, 6]} /><meshStandardMaterial color="#a3adce" metalness={0.7} roughness={0.25} /></mesh>
-    <mesh position={[0, -0.46, 0.015]}><sphereGeometry args={[0.11, 8, 6]} /><meshStandardMaterial color="#142236" /></mesh>
-    <mesh position={[0, -0.59, 0.015]}><boxGeometry args={[0.18, 0.25, 0.19]} /><meshStandardMaterial color="#526480" metalness={0.6} roughness={0.3} /></mesh>
-    <mesh position={[0, -0.7, leg ? -0.07 : 0]}><boxGeometry args={[0.19, 0.08, leg ? 0.34 : 0.19]} /><meshBasicMaterial color={CYAN} toneMapped={false} /></mesh>
-  </group>;
-}
-
-function Runner() {
+function Runner({ style }: { style: RunnerStyle }) {
   const ref = useRef<THREE.Group>(null);
   const shield = useRef<THREE.Mesh>(null);
   const ring = useRef<THREE.Mesh>(null);
   const muzzle = useRef<THREE.Mesh>(null);
-  const gun = useRef<THREE.Group>(null);
-  useFrame(({ clock }, dt) => {
+  const [weapon, setWeapon] = useState(game.combat.weapon);
+  const idleTime = useRef(0);
+  useFrame((_, dt) => {
     if (!ref.current) return;
-    const bob = game.phase === 'running' && game.y === 0 && game.slide <= 0 ? Math.sin(game.elapsed * 28) * 0.025 : 0;
-    ref.current.position.set(game.x, game.y + 0.05 + bob, 0);
+    if (game.combat.weapon !== weapon) setWeapon(game.combat.weapon);
+    if (!game.reducedMotion && game.phase === 'menu') idleTime.current += Math.min(dt, 0.05);
+    ref.current.position.set(game.x, game.y + 0.05, 0);
     ref.current.scale.y = THREE.MathUtils.damp(ref.current.scale.y, game.slide > 0 ? 0.38 : 1, 22, dt);
     ref.current.rotation.z = THREE.MathUtils.damp(ref.current.rotation.z, (game.x - game.lane * LANE_WIDTH) * 0.12, 12, dt);
     const angle = inCombat(game.phase) ? Math.atan2(-(game.combat.aim.x - game.x), -game.combat.aim.z) : 0;
     ref.current.rotation.y = THREE.MathUtils.damp(ref.current.rotation.y, angle, 12, dt);
-    if (gun.current) gun.current.visible = game.mode === 'campaign' || game.phase === 'menu';
+    ref.current.visible = !(game.invincible > 0 && Math.floor(game.elapsed * 12) % 2 === 0);
+    if (shield.current) { shield.current.visible = game.powers.shield > 0; shield.current.rotation.y = game.elapsed * 0.8; }
+    if (ring.current) { ring.current.position.x = game.x; ring.current.rotation.z = game.elapsed; }
     if (muzzle.current) {
       muzzle.current.visible = game.combat.muzzle > 0;
       (muzzle.current.material as THREE.MeshBasicMaterial).color.set(weaponById(game.combat.weapon).color).multiplyScalar(3);
       muzzle.current.scale.setScalar(0.8 + game.combat.muzzle * 10);
     }
-    ref.current.visible = !(game.invincible > 0 && Math.floor(clock.elapsedTime * 12) % 2 === 0);
-    if (shield.current) { shield.current.visible = game.powers.shield > 0; shield.current.rotation.y += dt * 0.8; }
-    if (ring.current) { ring.current.position.x = game.x; ring.current.rotation.z = clock.elapsedTime; }
   });
   return <>
     <group ref={ref}>
-      <mesh position={[0, 1.2, 0]}><boxGeometry args={[0.61, 0.64, 0.4]} /><meshStandardMaterial color="#393746" metalness={0.85} roughness={0.26} /></mesh>
-      <mesh position={[0, 1.46, 0]}><boxGeometry args={[0.76, 0.16, 0.44]} /><meshStandardMaterial color="#e3bc70" metalness={0.8} roughness={0.25} /></mesh>
-      <mesh position={[0, 1.23, 0.24]}><boxGeometry args={[0.32, 0.42, 0.12]} /><meshStandardMaterial color="#162235" /></mesh>
-      <mesh position={[0, 1.25, 0.315]}><boxGeometry args={[0.12, 0.31, 0.025]} /><meshBasicMaterial color={CYAN} toneMapped={false} /></mesh>
-      <mesh position={[0, 1.75, 0]}><boxGeometry args={[0.57, 0.48, 0.51]} /><meshStandardMaterial color="#46404f" metalness={0.8} roughness={0.2} /></mesh>
-      <mesh position={[0, 1.79, 0]}><boxGeometry args={[0.59, 0.105, 0.53]} /><meshBasicMaterial color={CYAN} toneMapped={false} /></mesh>
-      <mesh position={[0, 0.8, 0]}><boxGeometry args={[0.5, 0.22, 0.36]} /><meshStandardMaterial color="#192638" /></mesh>
-      <Limb side={-1} /><Limb side={1} /><Limb side={-1} leg /><Limb side={1} leg />
-      <group ref={gun} position={[0.4, 1.12, -0.25]}>
-        <mesh position={[0, 0, -0.25]}><boxGeometry args={[0.19, 0.22, 0.85]} /><meshStandardMaterial color="#252433" metalness={0.85} roughness={0.24} /></mesh>
-        <mesh position={[0, 0.12, -0.24]}><boxGeometry args={[0.08, 0.04, 0.65]} /><meshBasicMaterial color="#ffe2a0" toneMapped={false} /></mesh>
-        <mesh ref={muzzle} position={[0, 0, -0.82]} visible={false}><octahedronGeometry args={[0.18]} /><meshBasicMaterial color="#7ceeff" toneMapped={false} /></mesh>
-      </group>
-      <group position={[-0.08, 1.18, 0.3]} rotation={[0, 0, -0.45]}>
-        <mesh><boxGeometry args={[0.14, 1.3, 0.1]} /><meshStandardMaterial color="#131c29" metalness={0.8} roughness={0.3} /></mesh>
-        <mesh position={[-0.065, 0.05, 0.065]}><boxGeometry args={[0.04, 1.1, 0.03]} /><meshBasicMaterial color="#89faff" toneMapped={false} /></mesh>
-      </group>
-      <mesh ref={shield} position={[0, 1, 0]} visible={false}><icosahedronGeometry args={[1.4, 1]} /><meshBasicMaterial color={CYAN} transparent opacity={0.23} wireframe toneMapped={false} /></mesh>
-      <pointLight color={CYAN} intensity={6} distance={5} position={[0, 0.5, 0.5]} />
+      <RunnerModel style={style} weapon={weapon} pose={() => ({
+        motion: game.arena ? 'aim' : (game.phase === 'running' || game.phase === 'paused') && game.y === 0 && game.slide <= 0 ? 'run' : 'idle',
+        time: game.phase === 'menu' ? idleTime.current : game.elapsed,
+      })} />
+      <mesh ref={muzzle} position={[0.43, 1.15, -1.12]} visible={false}><octahedronGeometry args={[0.16]} /><meshBasicMaterial color={style.color} toneMapped={false} /></mesh>
+      <mesh ref={shield} position={[0, 1, 0]} visible={false}><icosahedronGeometry args={[1.4, 1]} /><meshBasicMaterial color={style.color} transparent opacity={0.23} wireframe toneMapped={false} /></mesh>
+      <pointLight color={style.color} intensity={6} distance={5} position={[0, 0.5, 0.5]} />
     </group>
-    <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}><ringGeometry args={[0.65, 0.72, 32]} /><meshBasicMaterial color={CYAN} transparent opacity={0.6} toneMapped={false} side={THREE.DoubleSide} /></mesh>
+    <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}><ringGeometry args={[0.65, 0.72, 32]} /><meshBasicMaterial color={style.color} transparent opacity={0.6} toneMapped={false} side={THREE.DoubleSide} /></mesh>
   </>;
 }
 
-function World({ highQuality, levelId }: { highQuality: boolean; levelId: number }) {
+function World({ highQuality, levelId, runnerStyle }: { highQuality: boolean; levelId: number; runnerStyle: RunnerStyle }) {
   const level = getLevel(levelId);
   return <>
     <color attach="background" args={[level.sky]} />
@@ -229,7 +205,7 @@ function World({ highQuality, levelId }: { highQuality: boolean; levelId: number
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.16, -60]}><planeGeometry args={[240, 240]} /><meshStandardMaterial color="#282333" metalness={0.7} roughness={0.32} /></mesh>
     <CombatScene levelId={levelId} />
     {kinds.map(kind => <EntityBatch key={kind} kind={kind} />)}
-    <Runner />
+    <Runner style={runnerStyle} />
     {highQuality && <EffectComposer multisampling={0}>
       <Bloom intensity={1.15} luminanceThreshold={0.8} luminanceSmoothing={0.4} mipmapBlur />
       <Vignette eskil={false} offset={0.15} darkness={0.65} />
@@ -244,17 +220,15 @@ class SceneBoundary extends Component<{ children: ReactNode; onError: () => void
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export const Scene = memo(function Scene({ highQuality, onReady, onError, levelId }: { highQuality: boolean; onReady: () => void; onError: () => void; levelId: number }) {
+export const Scene = memo(function Scene({ highQuality, onReady, onError, levelId, runnerStyle, suspended }: { highQuality: boolean; onReady: () => void; onError: () => void; levelId: number; runnerStyle: RunnerStyle; suspended: boolean }) {
   const [lost, setLost] = useState(false);
+  const handleLost = useCallback(() => { game.pause(); setLost(true); onError(); }, [onError]);
   return <SceneBoundary onError={onError}>
     {lost ? <div className="webgl-error">Graphics connection lost. Reload the page to reconnect.</div> :
-      <Canvas camera={{ position: [-5.6, 5.6, 11], fov: 56, near: 0.1, far: 280 }} dpr={highQuality ? [1, 1.5] : 1}
-        gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}
-        onCreated={({ gl }) => {
-          onReady();
-          gl.domElement.addEventListener('webglcontextlost', (event) => { event.preventDefault(); game.pause(); setLost(true); onError(); }, { once: true });
-        }}>
-        <World highQuality={highQuality} levelId={levelId} />
+      <Canvas frameloop={suspended ? 'never' : 'always'} camera={{ position: [-5.6, 5.6, 11], fov: 56, near: 0.1, far: 280 }} dpr={highQuality ? [1, 1.5] : 1}
+        gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}>
+        <GraphicsLifecycle onReady={onReady} onLost={handleLost} />
+        <World highQuality={highQuality} levelId={levelId} runnerStyle={runnerStyle} />
       </Canvas>}
   </SceneBoundary>;
 });

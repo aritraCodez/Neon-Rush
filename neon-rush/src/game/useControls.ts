@@ -5,6 +5,7 @@ import { inCombat } from './combat';
 
 export function useControls(ready: boolean) {
   useEffect(() => {
+    if (!ready) return;
     const keys: Record<string, Action> = {
       ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
       ArrowUp: 'jump', w: 'jump', W: 'jump', ' ': 'jump', ArrowDown: 'slide', s: 'slide', S: 'slide',
@@ -12,6 +13,7 @@ export function useControls(ready: boolean) {
     const keydown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (document.querySelector('dialog[open]')) return;
       if ((event.target as HTMLElement)?.closest('dialog, input, select, textarea, [role="slider"]')) return;
       const action = keys[event.key];
       const buttonFocused = (event.target as HTMLElement)?.closest('button');
