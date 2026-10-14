@@ -1,5 +1,7 @@
 # Deploy the multiplayer arena on Render
 
+Deploy the updated backend before the frontend: the new frontend uses protocol 2 sequenced input batches and delta snapshots. The backend still accepts legacy clients. Start with backend `ARENA_TICK_RATE=30`, `ARENA_SNAPSHOT_RATE=15`, and frontend `VITE_ARENA_INPUT_RATE=30`. See the [performance guide](MULTIPLAYER-PERFORMANCE.md) for diagnostics, measurements, and limits.
+
 The existing site is **https://neon-rush-rsii.onrender.com**. Keep it as a Render Static Site. Multiplayer uses a separate Node Web Service for WebSockets; Render routes public WebSockets through its Web Services using `wss://`. [Render WebSocket documentation](https://render.com/docs/websocket).
 
 ## 1. Push the updated repository

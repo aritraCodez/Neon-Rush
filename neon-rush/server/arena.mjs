@@ -1,3 +1,4 @@
+import { movePlayer, sanitizeInput, INPUT_DT } from '../shared/movement.js';
 import { ARENA, ARENA_COVER, ARENA_SPAWNS, PLAYER_COLORS } from '../shared/arena.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -32,18 +33,15 @@ export function segmentCircle(x, z, dx, dz, cx, cz, radius) {
   const time = (-b - Math.sqrt(discriminant)) / (2 * a);
   return time >= 0 && time <= 1 ? time : Infinity;
 }
-function blocked(x, z) {
-  const r = ARENA.playerRadius;
-  return ARENA_COVER.some(box => Math.abs(x - box.x) < box.width / 2 + r && Math.abs(z - box.z) < box.depth / 2 + r);
-}
 
 export class ArenaRoom {
   constructor(code, clock = Date.now) {
+    this.snapshotId = 0; this.tickRate = ARENA.tickRate; this.snapshotRate = 15; this.serverStepMs = 0;
     this.code = code; this.clock = clock; this.hostId = ''; this.phase = 'lobby'; this.round = 0;
-    this.players = new Map(); this.bullets = []; this.events = []; this.chat = []; this.nextId = 0;
+    this.players = new Map(); this.bullets = []; this.events = []; this.pendingEvents = []; this.chat = []; this.nextId = 0;
     this.phaseUntil = 0; this.matchEnds = 0; this.winners = []; this.endReason = '';
   }
-  notice(text, kind = 'notice') { this.events.unshift({ id: ++this.nextId, text, kind }); this.events.length = Math.min(this.events.length, 5); }
+  notice(text, kind = 'notice') { const event = { id: ++this.nextId, text, kind }; this.events.unshift(event); this.pendingEvents.push(event); this.events.length = Math.min(this.events.length, 5); }
   addPlayer(id, rawName, style) {
     if (this.phase !== 'lobby' && this.phase !== 'finished') throw new Error('This match has started. Join after it finishes.');
     if (this.players.size >= ARENA.maxPlayers) throw new Error('This room is full (6 players).');
@@ -56,13 +54,14 @@ export class ArenaRoom {
       ...spawn, angle: Math.atan2(spawn.x, spawn.z), hp: 100, kills: 0, deaths: 0,
       connected: true, ready: false, muted: true, respawnIn: 0, shield: 0, dashCooldown: 0, dashTime: 0,
       ammo: ARENA.magazine, reload: 0, cooldown: 0, moving: false, shots: 0, hit: 0,
-      input: neutral(), inputAt: 0, dashQueued: false, reloadQueued: false, disconnectedAt: 0, lastChatAt: 0,
+      ack: 0, lastSeq: 0, commands: [], sequenced: false, input: neutral(), inputAt: 0, dashQueued: false, reloadQueued: false, disconnectedAt: 0, lastChatAt: 0,
     };
     this.players.set(id, player); if (!this.hostId) this.hostId = id;
     this.notice(`${name} joined the room.`); return player;
   }
   setConnected(id, connected) {
     const player = this.players.get(id); if (!player) return;
+    player.commands.length = 0; player.lastSeq = player.ack; player.dashQueued = false; player.reloadQueued = false;
     player.connected = connected; player.input = neutral(); player.moving = false;
     player.disconnectedAt = connected ? 0 : this.clock();
     if (!connected) { player.ready = false; if (this.phase === 'countdown') { this.phase = 'lobby'; this.notice('Countdown cancelled: a player disconnected.'); } }
@@ -101,6 +100,7 @@ export class ArenaRoom {
     this.round++; this.phase = 'countdown'; this.phaseUntil = this.clock() + 3000;
     this.matchEnds = this.phaseUntil + ARENA.duration * 1000; this.bullets = []; this.events = []; this.winners = []; this.endReason = '';
     players.forEach((player, index) => {
+      player.ack = player.lastSeq; player.commands.length = 0;
       Object.assign(player, ARENA_SPAWNS[index], { hp: 100, kills: 0, deaths: 0, respawnIn: 0, shield: ARENA.spawnShield, ammo: ARENA.magazine, reload: 0, cooldown: 0, dashCooldown: 0, dashTime: 0, shots: 0, hit: 0, input: neutral(), dashQueued: false, reloadQueued: false });
       player.angle = Math.atan2(player.x, player.z);
     });
@@ -110,14 +110,30 @@ export class ArenaRoom {
     this.phase = 'lobby'; this.bullets = [];
     for (const player of this.players.values()) { player.ready = false; player.hp = 100; player.respawnIn = 0; player.input = neutral(); }
   }
-  setInput(id, input) {
+  enqueueInputs(id, commands) {
     const player = this.players.get(id);
-    if (!player?.connected || this.phase !== 'playing' || !input || typeof input !== 'object') return;
-    if (!['dx', 'dz', 'aimX', 'aimZ'].every(key => typeof input[key] === 'number' && Number.isFinite(input[key]))) return;
-    player.input = { dx: clamp(input.dx, -1, 1), dz: clamp(input.dz, -1, 1), aimX: clamp(input.aimX, -40, 40), aimZ: clamp(input.aimZ, -40, 40), fire: input.fire === true };
-    player.inputAt = this.clock(); player.dashQueued ||= input.dash === true; player.reloadQueued ||= input.reload === true;
+    if (!player?.connected || this.phase !== 'playing' || !Array.isArray(commands) || commands.length > 8) return false;
+    // Validate the entire batch before accepting it; never overwrite queued edges.
+    const clean = []; let seq = player.lastSeq;
+    for (const command of commands) {
+      const input = sanitizeInput(command);
+      if (!input || !Number.isSafeInteger(command.seq) || command.seq <= 0) return false;
+      if (command.seq <= seq) continue; // retransmitted/stale command
+      if (command.seq !== seq + 1) return false;
+      seq = command.seq; clean.push({ ...input, seq });
+    }
+    if (player.commands.length + clean.length > 120) return false;
+    player.sequenced = true; player.lastSeq = seq;
+    player.commands.push(...clean); player.inputAt = this.clock(); return true;
+  }
+  setInput(id, input) {
+    const player = this.players.get(id), clean = sanitizeInput(input);
+    if (!player?.connected || player.sequenced || this.phase !== 'playing' || !clean) return;
+    player.input = clean;
+    player.inputAt = this.clock(); player.dashQueued ||= clean.dash; player.reloadQueued ||= clean.reload;
   }
   respawn(player) {
+    player.ack = player.lastSeq; player.commands.length = 0; player.dashQueued = false; player.reloadQueued = false;
     const enemies = [...this.players.values()].filter(p => p.id !== player.id && p.hp > 0 && p.connected);
     const spawn = [...ARENA_SPAWNS].sort((a, b) => {
       const nearest = point => Math.min(...enemies.map(p => Math.hypot(point.x - p.x, point.z - p.z)), 100);
@@ -136,29 +152,26 @@ export class ArenaRoom {
     if (this.phase !== 'playing') return;
     if (now >= this.matchEnds) { this.finish('Time is up.'); return; }
     let remaining = clamp(dt, 0, 0.1);
-    while (remaining > 1e-6 && this.phase === 'playing') { const step = Math.min(remaining, 1 / 60); this.step(step, now); remaining -= step; }
+    while (remaining > 1e-6 && this.phase === 'playing') { const step = Math.min(remaining, INPUT_DT); this.step(step, now); remaining -= step; }
   }
   step(dt, now) {
     for (const player of this.players.values()) {
       player.hit = Math.max(0, player.hit - dt); player.moving = false;
       if (!player.connected) continue;
-      if (player.hp <= 0) { player.respawnIn = Math.max(0, player.respawnIn - dt); if (player.respawnIn <= 0) this.respawn(player); continue; }
-      if (now - player.inputAt > 500) { player.input = neutral(); player.dashQueued = false; player.reloadQueued = false; }
-      player.shield = Math.max(0, player.shield - dt); player.dashCooldown = Math.max(0, player.dashCooldown - dt);
-      player.dashTime = Math.max(0, player.dashTime - dt); player.cooldown = Math.max(0, player.cooldown - dt);
+      if (player.hp <= 0) { player.ack = player.lastSeq; player.commands.length = 0; player.respawnIn = Math.max(0, player.respawnIn - dt); if (player.respawnIn <= 0) this.respawn(player); continue; }
+      if (player.sequenced) {
+        const command = player.commands.shift();
+        player.input = command ?? { ...player.input, dx: 0, dz: 0,
+          fire: now - player.inputAt <= 500 && player.input.fire, dash: false, reload: false };
+        player.dashQueued = command?.dash === true; player.reloadQueued = command?.reload === true;
+        if (command) player.ack = command.seq;
+      }
+      if (now - player.inputAt > 500 && !player.sequenced) { player.input = neutral(); player.dashQueued = false; player.reloadQueued = false; }
+      player.shield = Math.max(0, player.shield - dt); player.cooldown = Math.max(0, player.cooldown - dt);
       if (player.reload > 0) { player.reload = Math.max(0, player.reload - dt); if (player.reload <= 0) player.ammo = ARENA.magazine; }
       const input = player.input;
-      if (Math.hypot(input.aimX - player.x, input.aimZ - player.z) > 0.1) player.angle = Math.atan2(-(input.aimX - player.x), -(input.aimZ - player.z));
-      const length = Math.hypot(input.dx, input.dz);
-      if (player.dashQueued && player.dashCooldown <= 0 && length > 0.1) { player.dashTime = ARENA.dashTime; player.dashCooldown = ARENA.dashCooldown; }
+      movePlayer(player, { ...input, dash: player.dashQueued }, dt);
       player.dashQueued = false;
-      const scale = ARENA.speed * (player.dashTime > 0 ? 2.8 : 1) * dt / Math.max(1, length);
-      const nx = clamp(player.x + input.dx * scale, -ARENA.width / 2 + ARENA.playerRadius, ARENA.width / 2 - ARENA.playerRadius);
-      const nz = clamp(player.z + input.dz * scale, -ARENA.depth / 2 + ARENA.playerRadius, ARENA.depth / 2 - ARENA.playerRadius);
-      const previousX = player.x, previousZ = player.z;
-      if (!blocked(nx, player.z)) player.x = nx;
-      if (!blocked(player.x, nz)) player.z = nz;
-      player.moving = Math.hypot(player.x - previousX, player.z - previousZ) > 0.001;
       if ((player.reloadQueued || player.ammo === 0) && player.reload <= 0 && player.ammo < ARENA.magazine) player.reload = ARENA.reloadTime;
       player.reloadQueued = false;
       if (input.fire && player.cooldown <= 0 && player.reload <= 0 && player.ammo > 0) {
@@ -180,6 +193,7 @@ export class ArenaRoom {
         if (target && target.shield <= 0 && target.dashTime <= 0) {
           target.hp = Math.max(0, target.hp - ARENA.bulletDamage); target.hit = 0.25;
           if (target.hp === 0) {
+            target.ack = target.lastSeq; target.commands.length = 0; target.dashQueued = false; target.reloadQueued = false;
             target.deaths++; target.respawnIn = ARENA.respawnTime; target.input = neutral();
             const shooter = this.players.get(bullet.owner);
             if (shooter) { shooter.kills++; this.notice(`${shooter.name} eliminated ${target.name}`, 'kill'); }
@@ -195,17 +209,18 @@ export class ArenaRoom {
   }
   snapshot(now = this.clock()) {
     return {
+      snapshotId: this.snapshotId, tickRate: this.tickRate, snapshotRate: this.snapshotRate, serverStepMs: this.serverStepMs,
       code: this.code, hostId: this.hostId, phase: this.phase, round: this.round,
       remaining: this.phase === 'playing' ? Math.max(0, (this.matchEnds - now) / 1000) : ARENA.duration,
       countdown: this.phase === 'countdown' ? Math.max(0, (this.phaseUntil - now) / 1000) : 0,
       players: [...this.players.values()].map(p => ({
         id: p.id, name: p.name, style: p.style, color: p.color, x: round(p.x), z: round(p.z), angle: round(p.angle),
         hp: p.hp, kills: p.kills, deaths: p.deaths, connected: p.connected, ready: p.ready, muted: p.muted,
-        respawnIn: round(p.respawnIn), shield: round(p.shield), dashCooldown: round(p.dashCooldown), dashing: p.dashTime > 0,
+        ack: p.ack, dashTime: p.dashTime, respawnIn: round(p.respawnIn), shield: round(p.shield), dashCooldown: round(p.dashCooldown), dashing: p.dashTime > 0,
         ammo: p.ammo, reload: round(p.reload), moving: p.moving, shots: p.shots, hit: round(p.hit),
       })),
       bullets: this.bullets.map(({ life: _life, ...bullet }) => ({ ...bullet, x: round(bullet.x), z: round(bullet.z) })),
-      events: this.events, chat: this.chat, winners: this.winners, endReason: this.endReason, serverTime: now,
+      events: [...this.events], chat: [...this.chat], winners: [...this.winners], endReason: this.endReason, serverTime: now,
     };
   }
 }

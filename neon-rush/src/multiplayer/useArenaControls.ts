@@ -27,18 +27,22 @@ export function useArenaControls(client: ArenaClient, active: boolean) {
     const up = (event: KeyboardEvent) => { input.held.delete(event.key.toLowerCase()); };
     const hidden = () => { if (document.hidden) reset(); };
     const release = (event: PointerEvent) => { if (event.pointerType === 'mouse') input.firing = false; };
-    const tick = setInterval(() => {
+    let frame = 0, previous = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - previous) / 1000; previous = now;
       const left = input.held.has('a') || input.held.has('arrowleft'), right = input.held.has('d') || input.held.has('arrowright');
       const forward = input.held.has('w') || input.held.has('arrowup'), back = input.held.has('s') || input.held.has('arrowdown');
-      const own = client.getSnapshot().room?.players.find(player => player.id === client.getSnapshot().playerId);
+      const own = client.simulation.predicted;
       if (input.touchAim && own) input.aim = { x: own.x + input.aimDirection.x * 30, z: own.z + input.aimDirection.z * 30 };
       const value: ArenaInput = { dx: input.move.x + Number(right) - Number(left), dz: input.move.z + Number(back) - Number(forward), aimX: input.aim.x, aimZ: input.aim.z, fire: input.firing || input.held.has('f'), dash: input.dash, reload: input.reload };
-      client.input(value); input.dash = false; input.reload = false;
-    }, 50);
+      client.frame(dt, value); input.dash = false; input.reload = false;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', reset);
     document.addEventListener('visibilitychange', hidden);
     window.addEventListener('pointerup', release); window.addEventListener('pointercancel', release);
-    return () => { clearInterval(tick); reset(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', reset); document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pointerup', release); window.removeEventListener('pointercancel', release); };
+    return () => { cancelAnimationFrame(frame); reset(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', reset); document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pointerup', release); window.removeEventListener('pointercancel', release); };
   }, [client, active]);
   return controls;
 }
