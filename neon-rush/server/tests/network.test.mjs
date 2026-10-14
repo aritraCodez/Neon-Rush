@@ -70,7 +70,6 @@ test('origin validation, missing rooms, binary frames, and expired sessions fail
   assert.equal(server.rooms.size, 0);
   const binaryClose = new Promise(resolve => b.ws.once('close', resolve)); b.ws.send(Buffer.from([0, 1, 2])); assert.equal(await binaryClose, 1008);
 });
-<<<<<<< Updated upstream
 test('voice signaling is relayed in-room, muted state syncs, and strangers are ignored', { timeout: 10000 }, async t => {
   const server = await startArenaServer({ port: 0, allowedOrigins: ['https://neon-rush-rsii.onrender.com'] }); t.after(() => server.close());
   const a = await connect(server.port), b = await connect(server.port), stray = await connect(server.port);
@@ -111,7 +110,7 @@ test('room chat is sanitized, broadcast in-room, and replayed to joiners', { tim
   const relay = await a.next('chat'); assert.equal(relay.message.text, 'glhf'); assert.equal(relay.message.name, 'Bob');
   await new Promise(resolve => setTimeout(resolve, 80));
   assert.equal(await Promise.race([stray.next('chat').then(() => 'leaked'), new Promise(resolve => setTimeout(() => resolve('ok'), 60))]), 'ok');
-=======
+});
 
 test('protocol 2: six players, deltas, bounded input, reliable events under pressure, resync and resume', { timeout: 15000 }, async t => {
   const server = await startArenaServer({ port: 0 }); t.after(() => server.close());
@@ -167,5 +166,4 @@ test('server accepts 20/30/60 Hz and rejects unsupported configuration', async t
   }
   await assert.rejects(startArenaServer({ port: 0, tickRate: 25 }), /tick rate/);
   await assert.rejects(startArenaServer({ port: 0, snapshotRate: 120 }), /snapshot rate/);
->>>>>>> Stashed changes
 });

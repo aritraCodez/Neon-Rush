@@ -1,10 +1,6 @@
-<<<<<<< Updated upstream
-import type { ArenaChat, ArenaInput, ArenaSnapshot } from '../../shared/multiplayer';
-=======
 import { ArenaSimulation } from './simulation';
 import { applySnapshotDelta } from '../../shared/snapshots.js';
-import type { ArenaInput, ArenaSnapshot } from '../../shared/multiplayer';
->>>>>>> Stashed changes
+import type { ArenaChat, ArenaInput, ArenaSnapshot } from '../../shared/multiplayer';
 
 type Session = { id: string; token: string; code: string };
 export type VoiceInbound = { type: 'voice'; from: string; kind: 'offer' | 'answer' | 'ice'; sdp?: string; candidate?: RTCIceCandidateInit };
@@ -66,7 +62,7 @@ export class ArenaClient {
   private inputRate = Math.max(10, Math.min(60, Number(import.meta.env.VITE_ARENA_INPUT_RATE) || 30));
   private publishRoom() {
     clearTimeout(this.uiTimer); this.uiTimer = undefined; this.lastUi = performance.now();
-    if (this.simulation.room) this.patch({ room: this.simulation.room });
+    if (this.simulation.room) this.patch({ room: this.simulation.room, chat: mergeChat(this.state.chat, parseChat(this.simulation.room.chat)) });
   }
   private acceptRoom(room: ArenaSnapshot) {
     const previous = this.simulation.room;
@@ -160,10 +156,16 @@ export class ArenaClient {
           this.remember({ id: message.id, token: message.token, code: message.code });
           this.clearPending(); this.patch({ playerId: message.id, error: '' }); break;
         case 'snapshot':
-<<<<<<< Updated upstream
-          if (message.room && Array.isArray(message.room.players) && Array.isArray(message.room.bullets)) {
-            this.patch({ room: message.room, chat: Array.isArray(message.room.chat) ? mergeChat(this.state.chat, parseChat(message.room.chat)) : this.state.chat });
-          }
+          if (message.room && Array.isArray(message.room.players) && Array.isArray(message.room.bullets)) this.acceptRoom(message.room); break;
+        case 'delta': {
+          const room = applySnapshotDelta(this.simulation.room, message);
+          if (room) this.acceptRoom(room); else this.send({ type: 'resync' });
+          break;
+        }
+        case 'input_rejected': socket.close(4001, 'Input stream requires resynchronization'); break;
+        case 'event':
+          if (this.state.room && !this.state.room.events.some(event => event.id === message.event.id))
+            this.patch({ room: { ...this.state.room, events: [message.event, ...this.state.room.events].slice(0, 5) } });
           break;
         case 'hello': case 'presence': if (Number.isFinite(message.online)) this.patch({ online: message.online }); break;
         case 'pong': if (Number.isFinite(message.sent)) this.patch({ latency: Math.max(0, Date.now() - message.sent) }); break;
@@ -178,33 +180,12 @@ export class ArenaClient {
             this.voiceListeners.forEach(listener => listener(message as VoiceInbound));
           }
           break;
-        case 'left': this.remember(null); this.clearPending(); this.patch({ room: null, playerId: '', error: '', chat: [] }); break;
+        case 'left': this.simulation.reset(); this.remember(null); this.clearPending(); this.patch({ room: null, playerId: '', error: '', chat: [] }); break;
         case 'error':
           this.clearPending();
-          if (message.code === 'session_expired') { this.remember(null); this.patch({ room: null, playerId: '', chat: [] }); }
+          if (message.code === 'session_expired') { this.simulation.reset(); this.remember(null); this.patch({ room: null, playerId: '', chat: [] }); }
           this.patch({ error: typeof message.message === 'string' ? message.message : 'Unable to complete that action.' }); break;
-        case 'shutdown': this.remember(null); this.patch({ room: null, playerId: '', error: message.message, chat: [] }); break;
-=======
-          if (message.room && Array.isArray(message.room.players) && Array.isArray(message.room.bullets)) this.acceptRoom(message.room); break;
-        case 'delta': {
-          const room = applySnapshotDelta(this.simulation.room, message);
-          if (room) this.acceptRoom(room); else this.send({ type: 'resync' });
-          break;
-        }
-        case 'input_rejected': socket.close(4001, 'Input stream requires resynchronization'); break;
-        case 'event':
-          if (this.state.room && !this.state.room.events.some(event => event.id === message.event.id))
-            this.patch({ room: { ...this.state.room, events: [message.event, ...this.state.room.events].slice(0, 5) } });
-          break;
-        case 'hello': case 'presence': if (Number.isFinite(message.online)) this.patch({ online: message.online }); break;
-        case 'pong': if (Number.isFinite(message.sent)) this.patch({ latency: Math.max(0, Date.now() - message.sent) }); break;
-        case 'left': this.simulation.reset(); this.remember(null); this.clearPending(); this.patch({ room: null, playerId: '', error: '' }); break;
-        case 'error':
-          this.clearPending();
-          if (message.code === 'session_expired') { this.simulation.reset(); this.remember(null); this.patch({ room: null, playerId: '' }); }
-          this.patch({ error: typeof message.message === 'string' ? message.message : 'Unable to complete that action.' }); break;
-        case 'shutdown': this.simulation.reset(); this.remember(null); this.patch({ room: null, playerId: '', error: message.message }); break;
->>>>>>> Stashed changes
+        case 'shutdown': this.simulation.reset(); this.remember(null); this.patch({ room: null, playerId: '', error: message.message, chat: [] }); break;
       }
     };
     socket.onerror = () => { /* onclose owns reconnect and error messaging. */ };
@@ -219,38 +200,26 @@ export class ArenaClient {
       this.retry = setTimeout(this.connect, delay);
     };
   };
-<<<<<<< Updated upstream
-  send(message: object, reliable = false) {
-    if (this.socket?.readyState !== WebSocket.OPEN) return false;
-    if (this.socket.bufferedAmount > (reliable ? 65536 : 8192)) return false;
-    this.socket.send(JSON.stringify(message)); return true;
-=======
   send(message: object, replaceable = false) {
     if (this.socket?.readyState !== WebSocket.OPEN) return false;
     if (this.socket.bufferedAmount > 1024 * 1024) { this.socket.close(4001, 'Connection too slow'); return false; }
     if (replaceable && this.socket.bufferedAmount > 8192) return false;
     const encoded = JSON.stringify(message);
     this.socket.send(encoded); this.counts.bytesOut += encoded.length; return true;
->>>>>>> Stashed changes
   }
   voice(to: string, signal: { kind: 'offer' | 'answer' | 'ice'; sdp?: string; candidate?: RTCIceCandidateInit }) {
-    return this.send({ type: 'voice', to, ...signal }, true);
+    return this.send({ type: 'voice', to, ...signal });
   }
-  setMuted(muted: boolean) { this.send({ type: 'voice-state', muted }, true); }
-  chat(text: string) { return this.send({ type: 'chat', text }, true); }
+  setMuted(muted: boolean) { this.send({ type: 'voice-state', muted }); }
+  chat(text: string) { return this.send({ type: 'chat', text }); }
   join(name: string, style: string, code?: string) {
     if (this.state.status !== 'connected' || this.state.pending) return;
     this.patch({ pending: true, error: '' });
     if (!this.send({ type: code ? 'join' : 'create', protocol: 2, name, style, code })) { this.clearPending(); return; }
     this.pendingTimeout = setTimeout(() => { this.clearPending(); this.patch({ error: 'The server did not respond. Please try again.' }); }, 8000);
   }
-<<<<<<< Updated upstream
-  input(value: ArenaInput) { if (this.state.status === 'connected' && this.state.room?.phase === 'playing') this.send({ type: 'input', input: value }); }
-  leave() { this.send({ type: 'leave' }); this.remember(null); this.patch({ room: null, playerId: '', error: '', chat: [] }); }
-=======
   input(value: ArenaInput) { this.frame(1 / 60, value); this.flushInputs(); }
-  leave() { this.send({ type: 'leave' }); this.simulation.reset(); clearTimeout(this.uiTimer); this.uiTimer = undefined; this.remember(null); this.patch({ room: null, playerId: '', error: '' }); }
->>>>>>> Stashed changes
+  leave() { this.send({ type: 'leave' }); this.simulation.reset(); clearTimeout(this.uiTimer); this.uiTimer = undefined; this.remember(null); this.patch({ room: null, playerId: '', error: '', chat: [] }); }
   dispose() {
     this.disposed = true; this.simulation.reset(); clearTimeout(this.uiTimer); this.uiTimer = undefined; clearInterval(this.inputTimer); clearTimeout(this.retry); clearTimeout(this.timeout); clearTimeout(this.pendingTimeout); clearInterval(this.heartbeat);
     const socket = this.socket; this.socket = null; socket?.close();

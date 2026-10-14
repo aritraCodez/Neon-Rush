@@ -69,13 +69,9 @@ export async function startArenaServer({
     if (session.ws && session.ws !== ws) session.ws.close(4000, 'Session opened in another connection');
     session.ws = ws; session.disconnectedAt = 0; ws.playerId = session.id;
     rooms.get(session.code)?.setConnected(session.id, true);
-<<<<<<< Updated upstream
-    send(ws, { type: 'session', id: session.id, token: session.token, code: session.code });
+    send(ws, { type: 'session', id: session.id, token: session.token, code: session.code, ack: rooms.get(session.code)?.players.get(session.id)?.ack ?? 0 });
     const room = rooms.get(session.code); if (room) send(ws, { type: 'chat-history', messages: room.chat });
     snapshot(session);
-=======
-    send(ws, { type: 'session', id: session.id, token: session.token, code: session.code, ack: rooms.get(session.code)?.players.get(session.id)?.ack ?? 0 }); snapshot(session);
->>>>>>> Stashed changes
   }
   http.on('upgrade', (request, socket, head) => {
     if (closing || request.url !== '/ws' || !allowedOrigins.includes(request.headers.origin) || wss.clients.size >= maxConnections) {
@@ -84,13 +80,8 @@ export async function startArenaServer({
     wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws));
   });
   wss.on('connection', ws => {
-<<<<<<< Updated upstream
     ws.alive = true; ws.tokens = 120; ws.refillAt = Date.now(); ws.playerId = '';
-    send(ws, { type: 'hello', protocol: 1, online: onlineCount() });
-=======
-    ws.alive = true; ws.tokens = 80; ws.refillAt = Date.now(); ws.playerId = '';
     send(ws, { type: 'hello', protocol: 2, tickRate, snapshotRate, online: onlineCount() });
->>>>>>> Stashed changes
     ws.on('pong', () => { ws.alive = true; });
     ws.on('error', () => { /* Close/disconnect handles recovery. */ });
     ws.on('message', (raw, binary) => {

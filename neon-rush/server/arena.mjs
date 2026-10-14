@@ -38,11 +38,7 @@ export class ArenaRoom {
   constructor(code, clock = Date.now) {
     this.snapshotId = 0; this.tickRate = ARENA.tickRate; this.snapshotRate = 15; this.serverStepMs = 0;
     this.code = code; this.clock = clock; this.hostId = ''; this.phase = 'lobby'; this.round = 0;
-<<<<<<< Updated upstream
-    this.players = new Map(); this.bullets = []; this.events = []; this.chat = []; this.nextId = 0;
-=======
-    this.players = new Map(); this.bullets = []; this.events = []; this.pendingEvents = []; this.nextId = 0;
->>>>>>> Stashed changes
+    this.players = new Map(); this.bullets = []; this.events = []; this.pendingEvents = []; this.chat = []; this.nextId = 0;
     this.phaseUntil = 0; this.matchEnds = 0; this.winners = []; this.endReason = '';
   }
   notice(text, kind = 'notice') { const event = { id: ++this.nextId, text, kind }; this.events.unshift(event); this.pendingEvents.push(event); this.events.length = Math.min(this.events.length, 5); }
@@ -58,11 +54,7 @@ export class ArenaRoom {
       ...spawn, angle: Math.atan2(spawn.x, spawn.z), hp: 100, kills: 0, deaths: 0,
       connected: true, ready: false, muted: true, respawnIn: 0, shield: 0, dashCooldown: 0, dashTime: 0,
       ammo: ARENA.magazine, reload: 0, cooldown: 0, moving: false, shots: 0, hit: 0,
-<<<<<<< Updated upstream
-      input: neutral(), inputAt: 0, dashQueued: false, reloadQueued: false, disconnectedAt: 0, lastChatAt: 0,
-=======
-      ack: 0, lastSeq: 0, commands: [], sequenced: false, input: neutral(), inputAt: 0, dashQueued: false, reloadQueued: false, disconnectedAt: 0,
->>>>>>> Stashed changes
+      ack: 0, lastSeq: 0, commands: [], sequenced: false, input: neutral(), inputAt: 0, dashQueued: false, reloadQueued: false, disconnectedAt: 0, lastChatAt: 0,
     };
     this.players.set(id, player); if (!this.hostId) this.hostId = id;
     this.notice(`${name} joined the room.`); return player;
@@ -223,21 +215,12 @@ export class ArenaRoom {
       countdown: this.phase === 'countdown' ? Math.max(0, (this.phaseUntil - now) / 1000) : 0,
       players: [...this.players.values()].map(p => ({
         id: p.id, name: p.name, style: p.style, color: p.color, x: round(p.x), z: round(p.z), angle: round(p.angle),
-<<<<<<< Updated upstream
         hp: p.hp, kills: p.kills, deaths: p.deaths, connected: p.connected, ready: p.ready, muted: p.muted,
-        respawnIn: round(p.respawnIn), shield: round(p.shield), dashCooldown: round(p.dashCooldown), dashing: p.dashTime > 0,
-        ammo: p.ammo, reload: round(p.reload), moving: p.moving, shots: p.shots, hit: round(p.hit),
-      })),
-      bullets: this.bullets.map(({ life: _life, ...bullet }) => ({ ...bullet, x: round(bullet.x), z: round(bullet.z) })),
-      events: this.events, chat: this.chat, winners: this.winners, endReason: this.endReason, serverTime: now,
-=======
-        hp: p.hp, kills: p.kills, deaths: p.deaths, connected: p.connected, ready: p.ready,
         ack: p.ack, dashTime: p.dashTime, respawnIn: round(p.respawnIn), shield: round(p.shield), dashCooldown: round(p.dashCooldown), dashing: p.dashTime > 0,
         ammo: p.ammo, reload: round(p.reload), moving: p.moving, shots: p.shots, hit: round(p.hit),
       })),
       bullets: this.bullets.map(({ life: _life, ...bullet }) => ({ ...bullet, x: round(bullet.x), z: round(bullet.z) })),
-      events: [...this.events], winners: [...this.winners], endReason: this.endReason, serverTime: now,
->>>>>>> Stashed changes
+      events: [...this.events], chat: [...this.chat], winners: [...this.winners], endReason: this.endReason, serverTime: now,
     };
   }
 }

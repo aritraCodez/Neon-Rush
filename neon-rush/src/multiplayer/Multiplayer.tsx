@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react';
-<<<<<<< Updated upstream
-import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Headphones, Mic, MicOff, Radio, RotateCcw, Send, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
-=======
-import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Radio, Maximize, Minimize, RotateCcw, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
->>>>>>> Stashed changes
+import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Headphones, Mic, MicOff, Send, Radio, Maximize, Minimize, RotateCcw, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
 import { ArenaClient } from './client';
 import { NetworkDiagnostics } from './NetworkDiagnostics';
 import { ArenaScene } from './ArenaScene';
@@ -186,18 +182,11 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
           </>}
         </section>
       </div> : <div className="arena-match-layout">
-<<<<<<< Updated upstream
-        <section className="arena-stage" aria-label="Live multiplayer arena">
-          <div className="arena-canvas"><ArenaScene room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
-          <div className="arena-match-top"><span><i /> THE EXCHANGE</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button></div>
-          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload · <b>V:</b> hold to talk.</p><p>Touch: left pad moves, right pad aims and fires. Use room chat or enable mic to talk with the room.</p></div>}
-=======
         <section ref={stage} className={`arena-stage ${expanded ? 'arena-expanded' : ''}`} aria-label="Live multiplayer arena">
-          <div className="arena-canvas"><ArenaScene client={client} room={room} playerId={playerId} controls={controls} onError={graphicsError} /></div>
+          <div className="arena-canvas"><ArenaScene client={client} room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
           <div className="arena-match-top"><span><i /> THE EXCHANGE</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls"><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
           {displayNote && expanded && <div className="arena-display-note" role="status">{displayNote}</div>}
-          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload.</p><p>Touch: left pad moves, right pad aims and fires. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Online matches keep running when you switch tabs.</p></div>}
->>>>>>> Stashed changes
+          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload ? <b>V:</b> hold to talk.</p><p>Touch: left pad moves, right pad aims and fires. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Use room chat or enable mic to talk with the room. Online matches keep running when you switch tabs.</p></div>}
           <div className="arena-kill-feed" aria-live="polite">{room.events.filter(event => event.kind === 'kill').slice(0, 3).map(event => <span key={event.id}><Crosshair size={11} />{event.text}</span>)}</div>
           <div className="arena-chat-feed" aria-live="polite">{connection.chat.slice(-8).map(message => <span key={message.id}><b style={{ color: message.color }}>{message.name}</b> {message.text}</span>)}</div>
           <div className="arena-radar" role="img" aria-label="Live map of every connected player"><span>LIVE RADAR</span><div>{ARENA_COVER.map((box, index) => <i key={index} style={{ left: `${(box.x / ARENA.width + 0.5) * 100}%`, top: `${(box.z / ARENA.depth + 0.5) * 100}%`, width: `${box.width / ARENA.width * 100}%`, height: `${box.depth / ARENA.depth * 100}%` }} />)}{room.players.filter(player => player.connected && player.hp > 0).map(player => <b key={player.id} title={player.name} className={player.id === playerId ? 'self' : ''} style={{ left: `${(player.x / ARENA.width + 0.5) * 100}%`, top: `${(player.z / ARENA.depth + 0.5) * 100}%`, background: player.color }} />)}</div></div>

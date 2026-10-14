@@ -132,28 +132,16 @@ class ArenaBoundary extends Component<{ children: ReactNode; onError: () => void
   componentDidCatch() { this.props.onError(); }
   render() { return this.state.failed ? null : this.props.children; }
 }
-<<<<<<< Updated upstream
-export function ArenaScene({ room, playerId, controls, onError, talking }: { room: ArenaSnapshot; playerId: string; controls: RefObject<ArenaControls>; onError: () => void; talking?: Record<string, boolean> }) {
-=======
-export function ArenaScene({ room, playerId, controls, onError, client }: { client: ArenaClient; room: ArenaSnapshot; playerId: string; controls: RefObject<ArenaControls>; onError: () => void }) {
->>>>>>> Stashed changes
+export function ArenaScene({ room, playerId, controls, onError, client, talking }: { client: ArenaClient; room: ArenaSnapshot; playerId: string; controls: RefObject<ArenaControls>; onError: () => void; talking?: Record<string, boolean> }) {
   const latest = useRef(room); latest.current = room;
   const labels = useRef<LabelMap>(new Map());
   const initialDpr = useRef(Math.min(devicePixelRatio, (navigator.maxTouchPoints > 0 || matchMedia('(any-pointer: coarse)').matches) ? 1.25 : 1.5));
   return <>
-<<<<<<< Updated upstream
-    <ArenaBoundary onError={onError}><Canvas camera={{ position: [0, 29, 23], fov: 50, near: 0.1, far: 120 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: false }} onCreated={({ gl }) => {
+    <ArenaBoundary onError={onError}><Canvas camera={{ position: [0, 29, 23], fov: 50, near: 0.1, far: 120 }} dpr={initialDpr.current} gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }} onCreated={({ gl }) => {
       gl.domElement.tabIndex = 0; gl.domElement.setAttribute('aria-label', 'Multiplayer arena. WASD or arrow keys move. Mouse aims. Hold click or F to fire. Space dashes. R reloads. Hold V to talk.');
-    }}><GraphicsLifecycle onLost={onError} /><ArenaWorld room={latest} playerId={playerId} controls={controls} labels={labels} /></Canvas></ArenaBoundary>
+    }}><GraphicsLifecycle onLost={onError} /><AdaptiveResolution /><ArenaWorld room={latest} playerId={playerId} controls={controls} labels={labels} client={client} /></Canvas></ArenaBoundary>
     <div className="arena-nameplates" aria-hidden="true">{room.players.map((player: ArenaPlayer) => <div key={player.id} className={`arena-nameplate ${player.id === playerId ? 'own-player' : ''} ${talking?.[player.id] ? 'is-talking' : ''}`} ref={node => { if (node) labels.current.set(player.id, node); else labels.current.delete(player.id); }}>
       <span style={{ color: player.color }}>{player.name}{player.id === playerId ? ' · YOU' : ''}{talking?.[player.id] ? ' · MIC' : player.muted ? ' · MUTED' : ''}</span><i><b style={{ width: `${player.hp}%`, background: player.color }} /></i>
-=======
-    <ArenaBoundary onError={onError}><Canvas camera={{ position: [0, 29, 23], fov: 50, near: 0.1, far: 120 }} dpr={initialDpr.current} gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }} onCreated={({ gl }) => {
-      gl.domElement.tabIndex = 0; gl.domElement.setAttribute('aria-label', 'Multiplayer arena. WASD or arrow keys move. Mouse aims. Hold click or F to fire. Space dashes. R reloads.');
-    }}><GraphicsLifecycle onLost={onError} /><AdaptiveResolution /><ArenaWorld room={latest} playerId={playerId} controls={controls} labels={labels} client={client} /></Canvas></ArenaBoundary>
-    <div className="arena-nameplates" aria-hidden="true">{room.players.map((player: ArenaPlayer) => <div key={player.id} className={`arena-nameplate ${player.id === playerId ? 'own-player' : ''}`} ref={node => { if (node) labels.current.set(player.id, node); else labels.current.delete(player.id); }}>
-      <span style={{ color: player.color }}>{player.name}{player.id === playerId ? ' · YOU' : ''}</span><i><b style={{ width: `${player.hp}%`, background: player.color }} /></i>
->>>>>>> Stashed changes
     </div>)}</div>
   </>;
 }

@@ -187,11 +187,7 @@ try {
   await a.getByRole('button', { name: 'Pause game', exact: true }).click();
   await a.getByRole('heading', { name: 'ON PAUSE.', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'No browser runtime errors');
-<<<<<<< Updated upstream
-  console.log(JSON.stringify({ result: 'passed', checks: ['separate players via room code and invite', 'ready and host permissions', 'room text chat', 'voice chat signaling', 'shared countdown', 'remote movement', 'real mouse aim and damage', 'kill scoreboard', 'reload and respawn', 'refresh reconnect', 'simultaneous mobile move/aim/fire', 'dash', 'mobile overflow', 'disconnect result and rematch', 'return to solo'], errors }));
-=======
-  console.log(JSON.stringify({ result: 'passed', diagnostics, checks: ['separate players via room code and invite', 'ready and host permissions', 'shared countdown', 'remote movement', 'real mouse aim and damage', 'kill scoreboard', 'reload and respawn', 'refresh reconnect', 'simultaneous mobile move/aim/fire', 'dash', 'mobile overflow', 'PC fullscreen and Alt+Enter', 'landscape dual pads and touch cancellation', 'fullscreen fallback', 'disconnect result and rematch', 'return to solo'], errors }));
->>>>>>> Stashed changes
+  console.log(JSON.stringify({ result: 'passed', diagnostics, checks: ['separate players via room code and invite', 'ready and host permissions', 'room text chat', 'voice chat signaling', 'shared countdown', 'remote movement', 'real mouse aim and damage', 'kill scoreboard', 'reload and respawn', 'refresh reconnect', 'simultaneous mobile move/aim/fire', 'dash', 'mobile overflow', 'PC fullscreen and Alt+Enter', 'landscape dual pads and touch cancellation', 'fullscreen fallback', 'disconnect result and rematch', 'return to solo'], errors }));
 } catch (error) {
   await Promise.allSettled([a.screenshot({ path: 'test-results/multiplayer-failure-a.png', fullPage: true }), b.screenshot({ path: 'test-results/multiplayer-failure-b.png', fullPage: true })]);
   console.error('arena-state', await a.evaluate(() => JSON.stringify({ room: window.__arenaSnapshot, input: window.__lastInput, network: window.__networkLog })).catch(() => null)); throw error;
