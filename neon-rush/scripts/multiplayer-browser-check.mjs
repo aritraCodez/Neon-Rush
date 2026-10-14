@@ -18,14 +18,22 @@ for (const context of contexts) {
     constructor(...args) {
       super(...args);
       if (!String(args[0]).endsWith('/ws')) return;
+      window.__networkLog ??= [];
+      const log = entry => { window.__networkLog.push(entry); if (window.__networkLog.length > 30) window.__networkLog.shift(); };
+      this.addEventListener('close', event => log({ close: event.code, reason: event.reason }));
       this.addEventListener('message', event => {
         const message = JSON.parse(event.data);
+        if (['session', 'input_rejected', 'error'].includes(message.type)) log({ type: message.type, ack: message.ack, message: message.message });
         if (message.type === 'snapshot') window.__arenaSnapshot = message.room;
+        if (message.type === 'delta' && window.__arenaSnapshot?.snapshotId === message.base) {
+          const previous = window.__arenaSnapshot;
+          window.__arenaSnapshot = { ...previous, ...message.changes, players: previous.players.map(player => ({ ...player, ...message.changes.players.find(p => p.id === player.id) })) };
+        }
         if (message.type === 'session') window.__arenaId = message.id;
         if (message.type === 'voice') { window.__arenaVoice ??= []; window.__arenaVoice.push(message.kind); }
       });
     }
-    send(data) { const message = JSON.parse(data); if (message.type === 'input') window.__lastInput = message.input; return super.send(data); }
+    send(data) { const message = JSON.parse(data); if (message.type === 'input') window.__lastInput = message.inputs?.at(-1) ?? message.input; return super.send(data); }
   };
   });
 }
@@ -62,6 +70,11 @@ try {
   await a.getByRole('button', { name: 'START MATCH', exact: true }).click();
   await Promise.all([a, b].map(page => page.waitForFunction(() => window.__arenaSnapshot?.phase === 'playing', undefined, { timeout: 15000 })));
   await a.bringToFront();
+  await a.getByRole('button', { name: 'Enter fullscreen', exact: true }).click();
+  await a.waitForFunction(() => document.fullscreenElement?.classList.contains('arena-stage') || document.querySelector('.arena-expanded'));
+  assert.ok(await a.locator('.arena-stage').evaluate(node => Math.abs(node.getBoundingClientRect().height - innerHeight) < 2));
+  await a.keyboard.press('Alt+Enter');
+  await a.waitForFunction(() => !document.fullscreenElement && !document.querySelector('.arena-expanded'));
   await a.locator('.arena-canvas canvas').focus(); await a.keyboard.down('d');
   await a.waitForFunction(() => window.__arenaSnapshot.players.find(player => player.id === window.__arenaId).x > 8.5, undefined, { timeout: 12000 });
   await a.keyboard.up('d');
@@ -85,6 +98,11 @@ try {
   await a.waitForFunction(() => window.__arenaSnapshot.players.find(player => player.id === window.__arenaId).reload > 0);
   await a.screenshot({ path: 'test-results/multiplayer-combat-desktop.png', fullPage: true });
   await b.waitForFunction(() => window.__arenaSnapshot.players.find(player => player.id === window.__arenaId).hp === 100, undefined, { timeout: 10000 });
+  await a.keyboard.press('F3');
+  const diagnostics = await a.getByLabel('Network diagnostics').innerText();
+  assert.match(diagnostics, /pending \d+/);
+  assert.equal(await a.evaluate(() => window.__networkLog.filter(event => event.close === 4001).length), 0, 'No prediction queue timeout during gameplay');
+  await a.keyboard.press('F3');
   const bobId = await b.evaluate(() => window.__arenaId);
   await b.reload({ waitUntil: 'networkidle' });
   await b.waitForFunction(id => window.__arenaId === id && window.__arenaSnapshot?.phase === 'playing', bobId, { timeout: 15000 });
@@ -107,6 +125,46 @@ try {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   assert.equal(await b.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await b.screenshot({ path: 'test-results/multiplayer-combat-mobile.png', fullPage: true });
+  // Landscape Android-sized viewport must keep both pads visible and reachable.
+  await b.setViewportSize({ width: 844, height: 390 });
+  await b.locator('.arena-stage').scrollIntoViewIfNeeded();
+  for (const name of ['Move runner with pad or arrow keys', 'Aim and fire with pad or arrow keys']) {
+    const pad = b.getByRole('group', { name }); await pad.waitFor({ state: 'visible' });
+    const bounds = await pad.boundingBox();
+    assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 390 && bounds.x >= 0 && bounds.x + bounds.width <= 844, 'Landscape pad fits viewport');
+  }
+  const landscapeMove = await b.getByRole('group', { name: 'Move runner with pad or arrow keys' }).boundingBox();
+  const landscapeFire = await b.getByRole('group', { name: 'Aim and fire with pad or arrow keys' }).boundingBox();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [
+    { id: 1, x: landscapeMove.x + landscapeMove.width * 0.8, y: landscapeMove.y + landscapeMove.height / 2 },
+    { id: 2, x: landscapeFire.x + landscapeFire.width / 2, y: landscapeFire.y + landscapeFire.height * 0.2 },
+  ] });
+  await b.waitForFunction(() => window.__lastInput?.dx > 0.2 && window.__lastInput?.fire === true);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  await b.waitForFunction(() => window.__lastInput?.dx === 0 && window.__lastInput?.fire === false);
+  assert.equal(await b.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await b.screenshot({ path: 'test-results/multiplayer-combat-landscape.png', fullPage: true });
+  for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+    await b.setViewportSize(viewport);
+    await b.locator('.arena-stage').evaluate(node => node.scrollIntoView({ block: 'start' }));
+    await b.waitForFunction(() => {
+      const pads = [...document.querySelectorAll('.arena-stick')].map(node => node.getBoundingClientRect());
+      return pads.length === 2 && pads.every(r => r.width >= 80 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight);
+    });
+    const overlap = await b.evaluate(() => {
+      const a = document.querySelector('.arena-vitals').getBoundingClientRect();
+      const c = document.querySelector('.arena-ammo').getBoundingClientRect();
+      return a.left < c.right && a.right > c.left && a.top < c.bottom && a.bottom > c.top;
+    });
+    assert.equal(overlap, false, 'Small-phone health and reload panels must not overlap');
+    await b.screenshot({ path: `test-results/multiplayer-touch-${viewport.width}.png` });
+  }
+  // Browser fullscreen denial still offers an explicitly escapable screen-fit mode.
+  await b.locator('.arena-stage').evaluate(node => { node.requestFullscreen = undefined; });
+  await b.getByRole('button', { name: 'Enter fullscreen', exact: true }).click();
+  await b.locator('.arena-expanded').waitFor();
+  await b.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+  await b.waitForFunction(() => !document.querySelector('.arena-expanded'));
   await b.getByRole('button', { name: 'LEAVE MATCH', exact: true }).click();
   await a.getByRole('heading', { name: 'YOU WIN.', exact: true }).waitFor();
   await a.getByRole('button', { name: 'REMATCH LOBBY', exact: true }).click();
@@ -129,8 +187,12 @@ try {
   await a.getByRole('button', { name: 'Pause game', exact: true }).click();
   await a.getByRole('heading', { name: 'ON PAUSE.', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'No browser runtime errors');
+<<<<<<< Updated upstream
   console.log(JSON.stringify({ result: 'passed', checks: ['separate players via room code and invite', 'ready and host permissions', 'room text chat', 'voice chat signaling', 'shared countdown', 'remote movement', 'real mouse aim and damage', 'kill scoreboard', 'reload and respawn', 'refresh reconnect', 'simultaneous mobile move/aim/fire', 'dash', 'mobile overflow', 'disconnect result and rematch', 'return to solo'], errors }));
+=======
+  console.log(JSON.stringify({ result: 'passed', diagnostics, checks: ['separate players via room code and invite', 'ready and host permissions', 'shared countdown', 'remote movement', 'real mouse aim and damage', 'kill scoreboard', 'reload and respawn', 'refresh reconnect', 'simultaneous mobile move/aim/fire', 'dash', 'mobile overflow', 'PC fullscreen and Alt+Enter', 'landscape dual pads and touch cancellation', 'fullscreen fallback', 'disconnect result and rematch', 'return to solo'], errors }));
+>>>>>>> Stashed changes
 } catch (error) {
   await Promise.allSettled([a.screenshot({ path: 'test-results/multiplayer-failure-a.png', fullPage: true }), b.screenshot({ path: 'test-results/multiplayer-failure-b.png', fullPage: true })]);
-  console.error('arena-state', await a.evaluate(() => ({ room: window.__arenaSnapshot, input: window.__lastInput })).catch(() => null)); throw error;
+  console.error('arena-state', await a.evaluate(() => JSON.stringify({ room: window.__arenaSnapshot, input: window.__lastInput, network: window.__networkLog })).catch(() => null)); throw error;
 } finally { await browser.close(); }

@@ -56,7 +56,13 @@ npm run test:multiplayer
 
 ## Multiplayer arena
 
+<<<<<<< Updated upstream
 Choose **Multiplayer Arena**, enter a name, and create or join a room. Up to six friends can fight in the same 3D arena with live nameplates, health, radar, scores, respawns, rematches, room text chat, and voice chat. Keyboard/mouse and touch controls are supported. The server calculates movement, damage, and results. Type in **Room Chat** to message the lobby or match. Voice is peer-to-peer; enable the mic in the room, then hold **V** or **TALK**.
+=======
+Multiplayer now includes local prediction/reconciliation, buffered remote rendering, configurable fixed server ticks, delta snapshots, and an optional F3 network overlay. See the [performance implementation and measured test results](neon-rush/docs/MULTIPLAYER-PERFORMANCE.md).
+
+Choose **Multiplayer Arena**, enter a name, and create or join a room. Up to six friends can fight in the same 3D arena with live nameplates, health, radar, scores, respawns, and rematches. Keyboard/mouse and touch controls are supported. The server calculates movement, damage, and results.
+>>>>>>> Stashed changes
 
 The production frontend can remain on Render Static Sites. Deploy the WebSocket backend and set the frontend's `VITE_MULTIPLAYER_URL` before rebuilding. Follow the [Render multiplayer deployment guide](neon-rush/docs/MULTIPLAYER-RENDER.md); the root `render.yaml` adds only the backend service.
 

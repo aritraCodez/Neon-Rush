@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react';
+<<<<<<< Updated upstream
 import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Headphones, Mic, MicOff, Radio, RotateCcw, Send, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
+=======
+import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Radio, Maximize, Minimize, RotateCcw, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
+>>>>>>> Stashed changes
 import { ArenaClient } from './client';
+import { NetworkDiagnostics } from './NetworkDiagnostics';
 import { ArenaScene } from './ArenaScene';
 import { useArenaControls } from './useArenaControls';
 import { useVoiceChat, type VoiceChat, type VoiceSnapshot } from './voice';
@@ -17,13 +22,14 @@ const byScore = (a: ArenaPlayer, b: ArenaPlayer) => b.kills - a.kills || a.death
 const timeLabel = (seconds: number) => { const rounded = Math.max(0, Math.ceil(seconds)); return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, '0')}`; };
 
 function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls: RefObject<ArenaControls>; disabled: boolean }) {
-  const [point, setPoint] = useState({ x: 0, z: 0 });
+  const knob = useRef<HTMLSpanElement>(null);
   const pointer = useRef<number | null>(null);
   function set(x: number, z: number) {
     const magnitude = Math.hypot(x, z), scale = Math.max(1, magnitude); x /= scale; z /= scale;
-    setPoint({ x, z });
+    if (magnitude < 0.12) { x = 0; z = 0; }
+    if (knob.current) knob.current.style.transform = `translate(${x * 23}px,${z * 23}px)`;
     if (kind === 'move') controls.current.move = { x, z };
-    else { controls.current.touchAim = true; if (magnitude > 0.1) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) }; controls.current.firing = magnitude > 0.1; }
+    else { controls.current.touchAim = true; if (magnitude > 0.1) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) }; controls.current.firing = magnitude >= 0.12; }
   }
   const update = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -31,13 +37,19 @@ function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls
   };
   const reset = () => { pointer.current = null; set(0, 0); };
   useEffect(() => { if (disabled) reset(); }, [disabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) reset(); };
+    window.addEventListener('blur', reset); window.addEventListener('resize', reset);
+    document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('blur', reset); window.removeEventListener('resize', reset); document.removeEventListener('visibilitychange', hidden); reset(); };
+  }, []); // Controls ref is stable for the mounted pad.
   return <div className={`arena-stick ${kind}`} role="group" tabIndex={disabled ? -1 : 0} aria-label={kind === 'move' ? 'Move runner with pad or arrow keys' : 'Aim and fire with pad or arrow keys'} aria-disabled={disabled}
-    onPointerDown={event => { if (disabled) return; event.preventDefault(); event.stopPropagation(); pointer.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); update(event); }}
+    onPointerDown={event => { if (disabled || pointer.current !== null) return; event.preventDefault(); event.stopPropagation(); pointer.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); update(event); }}
     onPointerMove={event => { if (pointer.current === event.pointerId && !disabled) { event.stopPropagation(); update(event); } }}
-    onPointerUp={event => { if (pointer.current === event.pointerId) { event.stopPropagation(); reset(); } }} onPointerCancel={reset} onLostPointerCapture={reset} onBlur={reset}
+    onPointerUp={event => { if (pointer.current === event.pointerId) { event.stopPropagation(); reset(); } }} onPointerCancel={event => { if (pointer.current === event.pointerId) reset(); }} onLostPointerCapture={event => { if (pointer.current === event.pointerId) reset(); }} onBlur={() => { if (pointer.current === null) reset(); }}
     onKeyDown={event => { if (disabled || !event.key.startsWith('Arrow')) return; event.preventDefault(); set(event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0, event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0); }}
     onKeyUp={event => { if (event.key.startsWith('Arrow')) { event.preventDefault(); reset(); } }}>
-    <i /><span style={{ transform: `translate(${point.x * 23}px,${point.z * 23}px)` }}>{kind === 'aim' ? <Crosshair size={23} /> : <span className="stick-cross">✥</span>}</span><small>{kind === 'move' ? 'MOVE' : 'AIM + FIRE'}</small>
+    <i /><span ref={knob}>{kind === 'aim' ? <Crosshair size={23} /> : <span className="stick-cross">✥</span>}</span><small>{kind === 'move' ? 'MOVE' : 'AIM + FIRE'}</small>
   </div>;
 }
 
@@ -77,6 +89,32 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   const [copied, setCopied] = useState('');
   const [graphicsFailed, setGraphicsFailed] = useState(false);
   const [help, setHelp] = useState(false);
+  const [touchDevice] = useState(() => navigator.maxTouchPoints > 0 || matchMedia('(any-pointer: coarse)').matches);
+  const stage = useRef<HTMLElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [displayNote, setDisplayNote] = useState('');
+  const toggleFullscreen = useCallback(async () => {
+    if (expanded) { setExpanded(false); return; }
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (stage.current?.requestFullscreen) await stage.current.requestFullscreen();
+      else { setExpanded(true); setDisplayNote('Screen-fit mode. Use Exit fullscreen to return.'); }
+    } catch { setExpanded(true); setDisplayNote('Browser fullscreen unavailable. Screen-fit mode enabled.'); }
+  }, [expanded]);
+  useEffect(() => {
+    const change = () => setFullscreen(document.fullscreenElement === stage.current && !!stage.current);
+    const key = (event: KeyboardEvent) => {
+      if (event.altKey && event.key === 'Enter' && stage.current) { event.preventDefault(); void toggleFullscreen(); }
+      if (event.key === 'Escape') { setExpanded(false); setHelp(false); }
+    };
+    document.addEventListener('fullscreenchange', change); window.addEventListener('keydown', key);
+    return () => { document.removeEventListener('fullscreenchange', change); window.removeEventListener('keydown', key); };
+  }, [toggleFullscreen]);
+  useEffect(() => {
+    if (room?.phase === 'lobby' || !room) { setExpanded(false); setDisplayNote(''); }
+    if (room?.phase === 'countdown' && touchDevice) stage.current?.scrollIntoView({ block: 'start' });
+  }, [room?.phase, touchDevice]);
   const own = room?.players.find(player => player.id === playerId);
   const active = room?.phase === 'playing' && status === 'connected' && !graphicsFailed && (own?.hp ?? 0) > 0;
   const controls = useArenaControls(client, active);
@@ -110,7 +148,8 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   const connected = status === 'connected';
   const inLobby = !room || room.phase === 'lobby';
 
-  return <div className="app multiplayer-app">
+  return <div className={`app multiplayer-app ${touchDevice ? 'arena-touch' : ''}`}>
+    <NetworkDiagnostics client={client} />
     <header className="site-header"><button className="brand arena-brand" onClick={leave}><span className="brand-mark"><Zap size={23} fill="currentColor" /></span><span>NEON<span className="brand-light">RUSH</span><small>MULTIPLAYER ARENA</small></span></button>
       <div className="arena-header-status"><span className={`connection-dot ${connected ? 'connected' : ''}`} /><span>{connected ? 'CONNECTED' : status === 'unconfigured' ? 'ARENA OFFLINE' : status === 'offline' ? 'DISCONNECTED' : 'CONNECTING'}</span>{connected && <b><Users size={14} />{connection.online ?? 0} online</b>}</div>
       <div className="header-actions"><button className="icon-button" onClick={onSound} aria-label={sound ? 'Mute sound' : 'Enable sound'}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="arena-exit" onClick={leave}><ArrowLeft size={15} />SOLO MODE</button></div>
@@ -147,10 +186,18 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
           </>}
         </section>
       </div> : <div className="arena-match-layout">
+<<<<<<< Updated upstream
         <section className="arena-stage" aria-label="Live multiplayer arena">
           <div className="arena-canvas"><ArenaScene room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
           <div className="arena-match-top"><span><i /> THE EXCHANGE</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button></div>
           {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload · <b>V:</b> hold to talk.</p><p>Touch: left pad moves, right pad aims and fires. Use room chat or enable mic to talk with the room.</p></div>}
+=======
+        <section ref={stage} className={`arena-stage ${expanded ? 'arena-expanded' : ''}`} aria-label="Live multiplayer arena">
+          <div className="arena-canvas"><ArenaScene client={client} room={room} playerId={playerId} controls={controls} onError={graphicsError} /></div>
+          <div className="arena-match-top"><span><i /> THE EXCHANGE</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls"><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
+          {displayNote && expanded && <div className="arena-display-note" role="status">{displayNote}</div>}
+          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload.</p><p>Touch: left pad moves, right pad aims and fires. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Online matches keep running when you switch tabs.</p></div>}
+>>>>>>> Stashed changes
           <div className="arena-kill-feed" aria-live="polite">{room.events.filter(event => event.kind === 'kill').slice(0, 3).map(event => <span key={event.id}><Crosshair size={11} />{event.text}</span>)}</div>
           <div className="arena-chat-feed" aria-live="polite">{connection.chat.slice(-8).map(message => <span key={message.id}><b style={{ color: message.color }}>{message.name}</b> {message.text}</span>)}</div>
           <div className="arena-radar" role="img" aria-label="Live map of every connected player"><span>LIVE RADAR</span><div>{ARENA_COVER.map((box, index) => <i key={index} style={{ left: `${(box.x / ARENA.width + 0.5) * 100}%`, top: `${(box.z / ARENA.depth + 0.5) * 100}%`, width: `${box.width / ARENA.width * 100}%`, height: `${box.depth / ARENA.depth * 100}%` }} />)}{room.players.filter(player => player.connected && player.hp > 0).map(player => <b key={player.id} title={player.name} className={player.id === playerId ? 'self' : ''} style={{ left: `${(player.x / ARENA.width + 0.5) * 100}%`, top: `${(player.z / ARENA.depth + 0.5) * 100}%`, background: player.color }} />)}</div></div>
