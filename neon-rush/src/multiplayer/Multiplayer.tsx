@@ -34,13 +34,6 @@ function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls
       if (magnitude > 0.16) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) };
       controls.current.touchFiring = stretched;
     }
-    pad.current?.classList.toggle('firing', stretched);
-    if (kind === 'move') controls.current.move = { x, z };
-    else {
-      controls.current.touchAim = true;
-      if (magnitude > 0.16) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) };
-      controls.current.touchFiring = stretched;
-    }
   }
   const update = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -49,14 +42,14 @@ function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls
     set(x / (rect.width * 0.38), y / (rect.height * 0.38));
   };
   const reset = () => { pointer.current = null; set(0, 0); };
-  return <div ref={pad} className={`arena-stick ${kind}`} role="group" tabIndex={disabled ? -1 : 0} aria-label={kind === 'move' ? 'Move runner with pad or arrow keys' : 'Aim with a short drag. Stretch the stick out to fire.'} aria-disabled={disabled}
+  useEffect(() => { if (disabled) reset(); }, [disabled]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const hidden = () => { if (document.hidden) reset(); };
     window.addEventListener('blur', reset); window.addEventListener('resize', reset);
     document.addEventListener('visibilitychange', hidden);
     return () => { window.removeEventListener('blur', reset); window.removeEventListener('resize', reset); document.removeEventListener('visibilitychange', hidden); reset(); };
-  }, []); // Controls ref is stable for the mounted pad.
-  return <div className={`arena-stick ${kind}`} role="group" tabIndex={disabled ? -1 : 0} aria-label={kind === 'move' ? 'Move runner with pad or arrow keys' : 'Aim and fire with pad or arrow keys'} aria-disabled={disabled}
+  }, []);
+  return <div ref={pad} className={`arena-stick ${kind}`} role="group" tabIndex={disabled ? -1 : 0} aria-label={kind === 'move' ? 'Move runner with pad or arrow keys' : 'Aim with a short drag. Stretch the stick out to fire.'} aria-disabled={disabled}
     onPointerDown={event => { if (disabled || pointer.current !== null) return; event.preventDefault(); event.stopPropagation(); pointer.current = event.pointerId; start.current = { x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); update(event); }}
     onPointerMove={event => { if (pointer.current === event.pointerId && !disabled) { event.stopPropagation(); update(event); } }}
     onPointerUp={event => { if (pointer.current === event.pointerId) { event.stopPropagation(); reset(); } }} onPointerCancel={event => { if (pointer.current === event.pointerId) reset(); }} onLostPointerCapture={event => { if (pointer.current === event.pointerId) reset(); }} onBlur={() => { if (pointer.current === null) reset(); }}
