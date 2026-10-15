@@ -23,7 +23,10 @@ test('swept collision catches high-speed projectiles and cover only blocks low s
 test('player projectiles hit enemies and precise aim produces critical feedback', () => {
   const system = arena(); const enemy = system.spawn('turret', 0, -12)!;
   system.aim = { x: 0, y: 1.65, z: -12 }; system.setFiring(true);
-  tick(system, 0.22);
+  system.update(1 / 120, player, hooks);
+  const bolt = system.projectiles.find(p => p.active && p.friendly)!;
+  assert.ok(Math.hypot(bolt.x - player.x, bolt.z) > 0.7, 'shots leave from the gun');
+  tick(system, 0.18);
   assert.ok(enemy.hp < enemy.maxHp - 24, 'Core hit should exceed base damage');
   assert.ok(system.hits > 0); assert.ok(system.critical > 0); assert.equal(system.ammo.blaster, 13);
 });

@@ -1,6 +1,6 @@
-import { arenaMap } from '../../shared/arena.js';
-import { INPUT_DT, movePlayer, sanitizeInput } from '../../shared/movement.js';
-import type { ArenaCommand, ArenaInput, ArenaPlayer, ArenaSnapshot } from '../../shared/multiplayer';
+import { arenaMap, arenaWeapon } from '../../shared/arena.js';
+import { INPUT_DT, movePlayer, muzzlePoint, sanitizeInput } from '../../shared/movement.js';
+import type { ArenaBullet, ArenaCommand, ArenaInput, ArenaPlayer, ArenaSnapshot } from '../../shared/multiplayer';
 
 export class ArenaSimulation {
   room: ArenaSnapshot | null = null;
@@ -16,14 +16,17 @@ export class ArenaSimulation {
   maxCorrection = 0;
   offsetX = 0;
   offsetZ = 0;
+  tracers: ArenaBullet[] = [];
   private dash = false;
   private reload = false;
   private renderTime = 0;
+  private tracerAt = 0;
 
   reset(ack = 0) {
     this.room = null; this.predicted = null; this.pending = []; this.history = [];
     this.sequence = ack; this.sent = ack; this.accumulator = 0;
     this.offsetX = 0; this.offsetZ = 0; this.dash = false; this.reload = false; this.renderTime = 0;
+    this.tracers = []; this.tracerAt = 0;
   }
   receive(room: ArenaSnapshot, playerId: string, now: number) {
     if (this.room && room.code === this.room.code && room.snapshotId <= this.room.snapshotId) return false;
@@ -36,7 +39,7 @@ export class ArenaSimulation {
     const discontinuity = !this.room || this.room.code !== room.code || this.room.round !== room.round || this.room.mapId !== room.mapId ||
       this.room.phase !== room.phase || this.predicted?.deaths !== own?.deaths ||
       (this.predicted?.hp === 0) !== (own?.hp === 0);
-    if (discontinuity) { this.history = []; this.renderTime = 0; this.offsetX = 0; this.offsetZ = 0; this.accumulator = 0; }
+    if (discontinuity) { this.history = []; this.renderTime = 0; this.offsetX = 0; this.offsetZ = 0; this.accumulator = 0; this.tracers = []; this.tracerAt = 0; }
     this.history.push({ room, arrived: now });
     if (this.history.length > 32) this.history.shift();
     this.room = room;
@@ -75,6 +78,7 @@ export class ArenaSimulation {
       const command = { ...input, seq: ++this.sequence, dash: this.dash, reload: this.reload };
       this.dash = false; this.reload = false;
       this.pending.push(command); movePlayer(this.predicted, command, INPUT_DT, arenaMap(this.room.mapId));
+      this.predictShot(command);
       this.accumulator -= INPUT_DT;
     }
     this.accumulator = Math.min(this.accumulator, INPUT_DT);
@@ -124,9 +128,29 @@ export class ArenaSimulation {
       }
     }
   }
-  bulletFrame(time: number) {
-    let result = this.history[0];
-    for (const entry of this.history) { if (entry.room.serverTime > time) break; result = entry; }
-    return result?.room;
+  bulletFrame(now: number) {
+    const latest = this.history.at(-1);
+    if (!latest) return { bullets: this.tracers, elapsed: 0 };
+    const elapsed = Math.max(0, Math.min(0.12, (now - latest.arrived) / 1000));
+    const owner = this.predicted?.id;
+    const live = latest.room.bullets;
+    this.tracers = this.tracers.filter(tracer => {
+      const age = (now - tracer.id) / 1000;
+      if (age > 0.22) return false;
+      return !live.some(bullet => bullet.owner === owner && Math.hypot(bullet.x - (tracer.x + tracer.vx * elapsed), bullet.z - (tracer.z + tracer.vz * elapsed)) < 2.4);
+    });
+    return { bullets: [...live, ...this.tracers], elapsed };
+  }
+  private predictShot(input: ArenaInput) {
+    if (!input.fire || !this.predicted || this.predicted.hp <= 0 || this.predicted.reload > 0 || this.predicted.ammo <= 0) return;
+    const weapon = arenaWeapon(this.predicted.weapon);
+    const now = performance.now();
+    if (now - this.tracerAt < weapon.interval * 1000) return;
+    this.tracerAt = now;
+    const origin = muzzlePoint(this.predicted.x + this.offsetX, this.predicted.z + this.offsetZ, this.predicted.angle);
+    this.tracers.push({
+      id: now, owner: this.predicted.id, x: origin.x, z: origin.z,
+      vx: -Math.sin(this.predicted.angle) * weapon.speed, vz: -Math.cos(this.predicted.angle) * weapon.speed, color: weapon.color,
+    });
   }
 }

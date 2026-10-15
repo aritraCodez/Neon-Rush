@@ -31,11 +31,12 @@ const ArenaRunner = memo(function ArenaRunner({ id, room, playerId, labels, clie
     root.current.visible = state.hp > 0 && state.connected;
     root.current.position.set(state.x, 0, state.z);
     root.current.rotation.y = state.angle;
-    pose.current.motion = state.moving ? 'run' : 'aim'; pose.current.time = performance.now() / 1000;
-    if (shield.current) shield.current.visible = state.shield > 0 || state.dashing;
-    if (state.shots !== shot.current.count) { shot.current.count = state.shots; shot.current.remaining = 0.09; }
+    if (state.shots !== shot.current.count) { shot.current.count = state.shots; shot.current.remaining = 0.35; }
+    if (id === playerId && client.simulation.tracers.length) shot.current.remaining = Math.max(shot.current.remaining, 0.3);
     shot.current.remaining = Math.max(0, shot.current.remaining - dt);
-    if (muzzle.current) muzzle.current.visible = shot.current.remaining > 0;
+    pose.current.motion = state.moving && shot.current.remaining <= 0 ? 'run' : 'aim'; pose.current.time = performance.now() / 1000;
+    if (shield.current) shield.current.visible = state.shield > 0 || state.dashing;
+    if (muzzle.current) muzzle.current.visible = shot.current.remaining > 0.26;
     const label = labels.current.get(id);
     if (label) {
       projected.set(root.current.position.x, 2.65, root.current.position.z).project(camera);
@@ -48,7 +49,7 @@ const ArenaRunner = memo(function ArenaRunner({ id, room, playerId, labels, clie
     <RunnerModel style={{ ...finish, color: player.color }} weapon={weapon ?? 'blaster'} pose={() => pose.current} />
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}><ringGeometry args={[0.62, id === playerId ? 0.78 : 0.68, 32]} /><meshBasicMaterial color={player.color} toneMapped={false} /></mesh>
     <mesh ref={shield} position={[0, 1.05, 0]}><sphereGeometry args={[1.1, 16, 12]} /><meshBasicMaterial color={player.color} wireframe transparent opacity={0.2} /></mesh>
-    <mesh ref={muzzle} visible={false} position={[0, 1.05, -0.8]}><octahedronGeometry args={[0.24]} /><meshBasicMaterial color={player.color} toneMapped={false} /></mesh>
+    <mesh ref={muzzle} visible={false} position={[0.4, 1.18, -0.95]}><octahedronGeometry args={[0.18]} /><meshBasicMaterial color={player.color} toneMapped={false} /></mesh>
   </group>;
 });
 
@@ -58,9 +59,9 @@ function Bolts({ client }: { client: ArenaClient }) {
   const color = useMemo(() => new THREE.Color(), []);
   useFrame(() => {
     if (!mesh.current) return;
-    const frame = client.simulation.bulletFrame(client.renderTime);
-    const bullets = frame?.bullets ?? [];
-    const elapsed = frame ? Math.max(0, Math.min(0.08, (client.renderTime - frame.serverTime) / 1000)) : 0;
+    const frame = client.simulation.bulletFrame(performance.now());
+    const bullets = frame.bullets;
+    const elapsed = frame.elapsed;
     mesh.current.count = Math.min(512, bullets.length);
     for (let index = 0; index < mesh.current.count; index++) {
       const bullet = bullets[index];
@@ -99,9 +100,9 @@ function ArenaWorld({ room, playerId, controls, labels, client }: { client: Aren
     const own = client.simulation.predicted;
     const narrow = size.width < 600;
     const x = (own?.x ?? 0) * (narrow ? 0.8 : 0.2), z = (own?.z ?? 0) * (narrow ? 0.85 : 0.25);
-    camera.position.x = THREE.MathUtils.damp(camera.position.x, x, 4, dt);
-    camera.position.y = THREE.MathUtils.damp(camera.position.y, narrow ? 21 : 29, 4, dt);
-    camera.position.z = THREE.MathUtils.damp(camera.position.z, z + (narrow ? 16 : 23), 4, dt);
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, x, 9, dt);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, narrow ? 21 : 29, 9, dt);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, z + (narrow ? 16 : 23), 9, dt);
     target.set(camera.position.x, 0, camera.position.z - (narrow ? 16 : 23)); camera.lookAt(target); camera.updateMatrixWorld();
     if (pointer.current && !controls.current.touchAim) {
       ray.setFromCamera(pointer.current, camera);

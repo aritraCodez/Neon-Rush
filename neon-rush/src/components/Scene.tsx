@@ -229,7 +229,7 @@ function Runner({ style }: { style: RunnerStyle }) {
         motion: game.arena ? 'aim' : game.slide > 0 ? 'idle' : game.y > 0.12 ? 'jump' : (game.phase === 'running' || game.phase === 'paused') ? 'run' : 'idle',
         time: game.phase === 'menu' ? idleTime.current : game.elapsed,
       })} />
-      <mesh ref={muzzle} position={[0.43, 1.15, -1.12]} visible={false}><octahedronGeometry args={[0.16]} /><meshBasicMaterial color={style.color} toneMapped={false} /></mesh>
+      <mesh ref={muzzle} position={[0.42, 1.18, -1.05]} visible={false}><octahedronGeometry args={[0.16]} /><meshBasicMaterial color={style.color} toneMapped={false} /></mesh>
       <mesh ref={shield} position={[0, 1, 0]} visible={false}><icosahedronGeometry args={[1.4, 1]} /><meshBasicMaterial color={style.color} transparent opacity={0.23} wireframe toneMapped={false} /></mesh>
       <pointLight color={style.color} intensity={6} distance={5} position={[0, 0.5, 0.5]} />
     </group>

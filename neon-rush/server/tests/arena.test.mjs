@@ -75,6 +75,7 @@ test('shots align with target after movement and directional touch aim stays fix
   room.setInput('one', { dx: 1, dz: 0, aimX: -10, aimZ: -4, fire: true }); room.step(1 / 60, 4100);
   const shot = room.bullets[0]; const dx = -10 - one.x, dz = -4 - one.z;
   assert.ok(Math.abs(shot.vx * dz - shot.vz * dx) < 1e-8);
+  assert.ok(Math.hypot(shot.x - one.x, shot.z - one.z) > 0.7, 'bolt starts at the gun, not the body');
   room.bullets = []; one.cooldown = 0;
   room.setInput('one', { dx: 1, dz: 1, aimX: 0, aimZ: 0, aimDX: 0, aimDZ: -1, fire: true }); room.step(1 / 60, 4100);
   assert.ok(Math.abs(room.bullets[0].vx) < 1e-8); assert.ok(room.bullets[0].vz < 0);

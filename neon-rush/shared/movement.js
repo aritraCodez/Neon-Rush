@@ -34,3 +34,9 @@ export function movePlayer(player, input, dt = INPUT_DT, map = arenaMap()) {
   if (Math.hypot(ax, az) > 0.01) player.angle = Math.atan2(-ax, -az);
   player.moving = Math.hypot(player.x - previousX, player.z - previousZ) > 0.001;
 }
+
+// Right-hand gun in local space (faces -Z at angle 0), matching RunnerModel.
+export function muzzlePoint(x, z, angle, right = 0.4, forward = 0.95) {
+  const lx = right, lz = -forward;
+  return { x: x + lx * Math.cos(angle) - lz * Math.sin(angle), z: z + lx * Math.sin(angle) + lz * Math.cos(angle) };
+}

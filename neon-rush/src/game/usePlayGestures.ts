@@ -16,6 +16,7 @@ export function usePlayGestures(stage: RefObject<HTMLElement | null>, enabled: b
     const pointers = new Map<number, Trace>();
     const firing = new Set<number>();
     const gestures = scheme !== 'buttons';
+    let lastLane = 0;
     const syncFire = () => game.fire(firing.size > 0);
     const clearHold = (trace: Trace) => { clearTimeout(trace.hold); trace.hold = 0; };
     const aim = (event: PointerEvent) => {
@@ -34,6 +35,7 @@ export function usePlayGestures(stage: RefObject<HTMLElement | null>, enabled: b
       if (!gestures) return;
       event.preventDefault();
       node.setPointerCapture(event.pointerId);
+      aim(event);
       const hold = window.setTimeout(() => {
         const trace = pointers.get(event.pointerId); if (!trace || trace.mode !== 'pending' || !inCombat(game.phase)) return;
         trace.mode = 'fire'; firing.add(event.pointerId); syncFire();
@@ -43,12 +45,15 @@ export function usePlayGestures(stage: RefObject<HTMLElement | null>, enabled: b
     const move = (event: PointerEvent) => {
       if (event.pointerType === 'mouse') { aim(event); return; }
       const trace = pointers.get(event.pointerId); if (!trace) return;
+      if (trace.mode === 'fire') { aim(event); return; }
       const dx = event.clientX - trace.x, dy = event.clientY - trace.y, distance = Math.hypot(dx, dy);
-      const threshold = trace.mode === 'swipe' ? 46 : 32;
+      const threshold = trace.mode === 'swipe' ? 52 : 40;
       if (distance < threshold) return;
       clearHold(trace);
-      if (trace.mode === 'fire') { firing.delete(event.pointerId); syncFire(); }
       const action = actionFrom(dx, dy);
+      const now = performance.now();
+      if ((action === 'left' || action === 'right') && now - lastLane < 180) return;
+      if (action === 'left' || action === 'right') lastLane = now;
       trace.mode = 'swipe'; trace.x = event.clientX; trace.y = event.clientY;
       game.act(action);
       if (inCombat(game.phase)) game.cover(action === 'slide');

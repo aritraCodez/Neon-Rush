@@ -1,4 +1,4 @@
-import { movePlayer, sanitizeInput, INPUT_DT } from '../shared/movement.js';
+import { movePlayer, sanitizeInput, INPUT_DT, muzzlePoint } from '../shared/movement.js';
 import { ARENA, ARENA_MAPS, arenaMap, arenaWeapon, PLAYER_COLORS } from '../shared/arena.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -214,10 +214,11 @@ export class ArenaRoom {
       player.reloadQueued = false;
       if (input.fire && player.cooldown <= 0 && player.reload <= 0 && player.ammo > 0) {
         player.shield = 0; player.ammo--; player.shots++; player.cooldown = weapon.interval;
+        const origin = muzzlePoint(player.x, player.z, player.angle);
         for (let pellet = 0; pellet < weapon.pellets; pellet++) {
           const spread = weapon.pellets > 1 ? (pellet / (weapon.pellets - 1) - 0.5) * weapon.spread : 0;
           const angle = player.angle + spread;
-          this.bullets.push({ id: ++this.nextId, owner: player.id, x: player.x, z: player.z, vx: -Math.sin(angle) * weapon.speed, vz: -Math.cos(angle) * weapon.speed, damage: weapon.damage, life: player.weapon === 'shotgun' ? 0.55 : 1.5, color: weapon.color });
+          this.bullets.push({ id: ++this.nextId, owner: player.id, x: origin.x, z: origin.z, vx: -Math.sin(angle) * weapon.speed, vz: -Math.cos(angle) * weapon.speed, damage: weapon.damage, life: player.weapon === 'shotgun' ? 0.55 : 1.5, color: weapon.color });
         }
       }
     }
