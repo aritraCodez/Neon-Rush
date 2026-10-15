@@ -7,10 +7,11 @@ import { Modal } from './components/Modal';
 import { game } from './game/engine';
 import { audio } from './game/audio';
 import { useControls } from './game/useControls';
+import { usePlayGestures } from './game/usePlayGestures';
+import { readTouchScheme, saveTouchScheme, type TouchScheme } from './game/touchScheme';
 import { CombatHud } from './components/CombatHud';
 import { CampaignOverlay } from './components/CampaignOverlay';
 import { LevelSelect } from './components/LevelSelect';
-import { inCombat } from './game/combat';
 import { RunnerWorkshop } from './components/RunnerWorkshop';
 import { readRunnerStyle, saveRunnerStyle } from './game/runnerStyle';
 import './multiplayer/multiplayer.css';
@@ -32,14 +33,16 @@ export default function App() {
   const [sound, setSound] = useState(() => readSetting('sound', true));
   const [quality, setQuality] = useState(() => readSetting('quality', true));
   const [reduced, setReduced] = useState(() => readSetting('motion', window.matchMedia('(prefers-reduced-motion: reduce)').matches));
+  const [touchScheme, setTouchScheme] = useState(readTouchScheme);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenNote, setFullscreenNote] = useState('');
   const stage = useRef<HTMLDivElement>(null);
-  const pointer = useRef<{ x: number; y: number; time: number } | null>(null);
   useControls(ready && !failed && !multiplayer);
+  usePlayGestures(stage, ready && !failed && !multiplayer, touchScheme);
   useEffect(() => { audio.enabled = sound; saveSetting('sound', sound); if (sound) audio.unlock(); }, [sound]);
   useEffect(() => { game.reducedMotion = reduced; saveSetting('motion', reduced); }, [reduced]);
   useEffect(() => { saveSetting('quality', quality); }, [quality]);
+  useEffect(() => { saveTouchScheme(touchScheme); }, [touchScheme]);
   useEffect(() => { saveRunnerStyle(runnerStyle); }, [runnerStyle]);
   useEffect(() => { const change = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange', change); return () => document.removeEventListener('fullscreenchange', change); }, []);
   useEffect(() => {
@@ -78,27 +81,11 @@ export default function App() {
     <main>
       <div className="section-topline"><span><span className="live-dot" /> NIGHT CITY / SYSTEM ONLINE</span><span>CAMPAIGN + ENDLESS</span></div>
       <nav className="arena-mode-nav" aria-label="Game mode"><button aria-current="page"><Gamepad2 size={16} />SOLO CAMPAIGN</button><button onClick={() => { game.pause(); setDialog(null); setMultiplayer(true); }}><Zap size={16} />MULTIPLAYER ARENA</button></nav>
-      <div ref={stage} className={`game-stage phase-${state.phase} ${state.campaign.active ? 'campaign-mode' : ''}`} aria-label="Neon Rush 3D game" onPointerMove={event => {
-        if (!inCombat(state.phase) || (event.target as HTMLElement).closest('button, [role="slider"]')) return;
-        const rect = event.currentTarget.getBoundingClientRect();
-        game.combat.aimActive = true; game.combat.aimNdc = { x: (event.clientX - rect.left) / rect.width * 2 - 1, y: 1 - (event.clientY - rect.top) / rect.height * 2 };
-      }} onPointerDown={event => {
-        if ((event.target as HTMLElement).closest('button, a, [role="slider"]')) return;
-        if (inCombat(state.phase)) { if (event.pointerType === 'mouse' && event.button === 0) { event.currentTarget.setPointerCapture(event.pointerId); game.fire(true); } return; }
-        if (state.phase !== 'running') return;
-        pointer.current = { x: event.clientX, y: event.clientY, time: Date.now() };
-      }} onPointerUp={event => {
-        if (inCombat(state.phase) && event.pointerType === 'mouse') game.fire(false);
-        if (!pointer.current || state.phase !== 'running') return;
-        const start = pointer.current; pointer.current = null;
-        const dx = event.clientX - start.x, dy = event.clientY - start.y;
-        if (Math.max(Math.abs(dx), Math.abs(dy)) > 25) game.act(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 'right' : 'left' : dy < 0 ? 'jump' : 'slide');
-        else if (Date.now() - start.time < 300) game.act('jump');
-      }} onPointerCancel={() => { pointer.current = null; game.fire(false); }}>
+      <div ref={stage} className={`game-stage phase-${state.phase} ${state.campaign.active ? 'campaign-mode' : ''} touch-${touchScheme}`} aria-label="Neon Rush 3D game">
         <div className="scene"><Scene highQuality={quality} onReady={onReady} onError={onError} levelId={state.campaign.levelId} runnerStyle={runnerStyle} suspended={dialog === 'workshop'} /></div>
         <div className="scene-shade" />
-        <Hud state={state} />
-        <CombatHud state={state} />
+        <Hud state={state} touchScheme={touchScheme} />
+        <CombatHud state={state} touchScheme={touchScheme} />
         <GameOverlay state={state} ready={ready} failed={failed} onHelp={() => openDialog('help')} onMissions={() => openDialog('missions')} />
         <CampaignOverlay state={state} onMissions={() => openDialog('missions')} />
         <button className="fullscreen-button icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={toggleFullscreen}>{fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}</button>
@@ -120,6 +107,8 @@ export default function App() {
     {dialog === 'settings' && <Modal title="Fine-tune your rush" onClose={() => setDialog(null)}>
       <p className="modal-copy">Your circuit. Your settings.</p>
       {[{ title: 'Sound effects', text: 'Hear coins, jumps, and power-ups.', value: sound, set: setSound, Icon: Volume2 }, { title: 'Neon bloom', text: 'Turn off for smoother play on slower devices.', value: quality, set: setQuality, Icon: Zap }, { title: 'Reduced motion', text: 'Quiet the menus and ambient track movement.', value: reduced, set: setReduced, Icon: Settings2 }].map(({ title, text, value, set, Icon }) => <div className="setting-row" key={title}><Icon size={20} /><div><strong>{title}</strong><p>{text}</p></div><button className={`switch ${value ? 'on' : ''}`} role="switch" aria-checked={value} aria-label={title} onClick={() => set(!value)}><span /></button></div>)}
+      <div className="setting-row"><Gamepad2 size={20} /><div><strong>Android / touch controls</strong><p>Use on-screen buttons, screen swipes, or both. Swipe to dodge and tap with another finger to fire.</p></div></div>
+      <div className="touch-scheme" role="radiogroup" aria-label="Touch control scheme">{([['buttons', 'BUTTONS'], ['both', 'BOTH'], ['swipes', 'SWIPES']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={touchScheme === value} onClick={() => setTouchScheme(value as TouchScheme)}>{label}</button>)}</div>
       <p className="settings-note">Scores and preferences are saved on this browser.</p>
     </Modal>}
     {dialog === 'help' && <Modal title="Own the night." onClose={() => setDialog(null)}>
@@ -127,7 +116,7 @@ export default function App() {
       <div className="help-controls">{[[ArrowLeft, 'Change lanes', '← → or A / D', 'Swipe left or right'], [ArrowUp, 'Jump barriers', '↑, W or Space', 'Swipe up or tap'], [ArrowDown, 'Slide under gates', '↓ or S', 'Swipe down']].map(([Icon, title, keys, touch]) => { const ControlIcon = Icon as typeof ArrowRight; return <div key={String(title)}><ControlIcon size={20} /><strong>{String(title)}</strong><span>{String(keys)}</span><small>{String(touch)}</small></div>; })}</div>
       <div className="hazard-tip"><span className="hazard-swatch" /><p><b>Pink blocks:</b> change lanes. <b>Orange barriers:</b> jump. <b>Raised pink beams:</b> slide. There’s always an open lane.</p></div>
       <h3 className="help-heading">COMBAT FIELD MANUAL</h3>
-      <div className="combat-help"><p><b>Mouse:</b> aim. <b>Hold left click / F:</b> fire. <b>R:</b> reload. <b>Q:</b> cycle weapons. <b>Shift:</b> dash to an adjacent lane.</p><p><b>Cover:</b> move behind a barricade and hold S / Down. Release to fire over it. Jump shockwaves; dash out of marked laser lanes.</p><p><b>Critical hits:</b> aim at glowing cores. Shield Bots expose their armor while winding up an attack. Kills chain into a score multiplier.</p><p><b>On mobile:</b> use the aim pad, hold FIRE or COVER, and use the movement and ability buttons. You can also drag the arena to aim.</p><p>All weapons have unlimited reserve energy. A charged laser fires after holding for 0.8 seconds. The shotgun unlocks at level 2; the laser at level 3. Green pickups repair health, violet restore armor, cyan refill ammunition.</p><p>Campaign checkpoints are saved at each encounter. Retry restores health and adds 25 damage to the mission rating. Credits bank on mission completion; spend them in Missions & Armory.</p></div>
+      <div className="combat-help"><p><b>Mouse:</b> aim. <b>Hold left click / F:</b> fire. <b>R:</b> reload. <b>Q:</b> cycle weapons. <b>Shift:</b> dash to an adjacent lane.</p><p><b>Cover:</b> move behind a barricade and hold S / Down. Release to fire over it. Jump shockwaves; dash out of marked laser lanes.</p><p><b>Critical hits:</b> aim at glowing cores. Shield Bots expose their armor while winding up an attack. Kills chain into a score multiplier.</p><p><b>On Android / touch:</b> swipe left or right to dodge, swipe up to jump, swipe down to slide or take cover. Tap the arena to fire — you can swipe with one finger and tap-fire with another. Choose Buttons, Swipes, or Both in Settings. FIRE, AIM, and DASH stay on screen.</p><p>All weapons have unlimited reserve energy. A charged laser fires after holding for 0.8 seconds. The shotgun unlocks at level 2; the laser at level 3. Green pickups repair health, violet restore armor, cyan refill ammunition.</p><p>Campaign checkpoints are saved at each encounter. Retry restores health and adds 25 damage to the mission rating. Credits bank on mission completion; spend them in Missions & Armory.</p></div>
       <h3 className="help-heading">GRAB AN ADVANTAGE</h3>
       <div className="help-power"><Shield className="cyan" size={23} /><div><strong>Shield</strong><span>Absorbs one collision. Lasts up to 10 seconds.</span></div></div>
       <div className="help-power"><Magnet className="violet-text" size={23} /><div><strong>Coin magnet</strong><span>Pulls in nearby coins from all lanes for 12 seconds.</span></div></div>

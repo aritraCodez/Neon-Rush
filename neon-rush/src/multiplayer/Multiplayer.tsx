@@ -18,15 +18,29 @@ const byScore = (a: ArenaPlayer, b: ArenaPlayer) => b.kills - a.kills || a.death
 const timeLabel = (seconds: number) => { const rounded = Math.max(0, Math.ceil(seconds)); return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, '0')}`; };
 
 function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls: RefObject<ArenaControls>; disabled: boolean }) {
+  const pad = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLSpanElement>(null);
   const pointer = useRef<number | null>(null);
   const start = useRef({ x: 0, y: 0 });
   function set(x: number, z: number) {
     const magnitude = Math.hypot(x, z), scale = Math.max(1, magnitude); x /= scale; z /= scale;
-    if (magnitude < 0.12) { x = 0; z = 0; }
-    if (knob.current) knob.current.style.transform = `translate(${x * 23}px,${z * 23}px)`;
+    if (magnitude < 0.16) { x = 0; z = 0; }
+    const stretched = kind === 'aim' && magnitude >= 0.58;
+    if (knob.current) knob.current.style.transform = `translate(${x * 28}px,${z * 28}px)`;
+    pad.current?.classList.toggle('firing', stretched);
     if (kind === 'move') controls.current.move = { x, z };
-    else { controls.current.touchAim = true; if (magnitude > 0.1) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) }; controls.current.touchFiring = magnitude >= 0.18; }
+    else {
+      controls.current.touchAim = true;
+      if (magnitude > 0.16) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) };
+      controls.current.touchFiring = stretched;
+    }
+    pad.current?.classList.toggle('firing', stretched);
+    if (kind === 'move') controls.current.move = { x, z };
+    else {
+      controls.current.touchAim = true;
+      if (magnitude > 0.16) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) };
+      controls.current.touchFiring = stretched;
+    }
   }
   const update = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -35,7 +49,7 @@ function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls
     set(x / (rect.width * 0.38), y / (rect.height * 0.38));
   };
   const reset = () => { pointer.current = null; set(0, 0); };
-  useEffect(() => { if (disabled) reset(); }, [disabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <div ref={pad} className={`arena-stick ${kind}`} role="group" tabIndex={disabled ? -1 : 0} aria-label={kind === 'move' ? 'Move runner with pad or arrow keys' : 'Aim with a short drag. Stretch the stick out to fire.'} aria-disabled={disabled}
   useEffect(() => {
     const hidden = () => { if (document.hidden) reset(); };
     window.addEventListener('blur', reset); window.addEventListener('resize', reset);
@@ -205,15 +219,15 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
           <div className="arena-canvas"><ArenaScene client={client} room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
           <div className="arena-match-top"><span><i /> {map.name.toUpperCase()}</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls"><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
           {displayNote && expanded && <div className="arena-display-note" role="status">{displayNote}</div>}
-          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload / <b>V:</b> hold to talk.</p><p>Touch: left pad moves without firing. Touch and drag the right pad to aim and fire; release or return to the touch origin to stop. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Use room chat or enable mic to talk with the room. Online matches keep running when you switch tabs.</p></div>}
+          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload / <b>V:</b> hold to talk.</p><p>Touch: left pad moves without firing. A short drag on the right pad only changes aim. Stretch it out to the ring to fire, and release to stop. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Use room chat or enable mic to talk with the room. Online matches keep running when you switch tabs.</p></div>}
           <div className="arena-kill-feed" aria-live="polite">{room.events.filter(event => event.kind === 'kill').slice(0, 3).map(event => <span key={event.id}><Crosshair size={11} />{event.text}</span>)}</div>
           <div className="arena-chat-feed" aria-live="polite">{connection.chat.slice(-8).map(message => <span key={message.id}><b style={{ color: message.color }}>{message.name}</b> {message.text}</span>)}</div>
           <div className="arena-radar" role="img" aria-label="Live map of every connected player"><span>LIVE RADAR</span><div>{map.cover.map((box, index) => <i key={index} style={{ left: `${(box.x / map.width + 0.5) * 100}%`, top: `${(box.z / map.depth + 0.5) * 100}%`, width: `${box.width / map.width * 100}%`, height: `${box.depth / map.depth * 100}%` }} />)}{room.players.filter(player => player.connected && player.hp > 0).map(player => <b key={player.id} title={player.name} className={player.id === playerId ? 'self' : ''} style={{ left: `${(player.x / map.width + 0.5) * 100}%`, top: `${(player.z / map.depth + 0.5) * 100}%`, background: player.color }} />)}</div></div>
           {room.phase === 'countdown' && <div className="arena-center-overlay"><span>ALL RUNNERS CONNECTED</span><strong>{Math.max(1, Math.ceil(room.countdown))}</strong><p>Get ready. Watch your corners.</p></div>}
           {room.phase === 'playing' && own && own.hp <= 0 && <div className="arena-respawn" role="status"><strong>REBOOTING IN {Math.max(1, Math.ceil(own.respawnIn))}</strong><span>You’ll rejoin the fight with full health.</span></div>}
           {room.phase === 'playing' && own && <>
-            <div className="arena-vitals"><div><Shield size={16} /><strong>{own.hp}</strong><span>HP{own.armor > 0 ? ` + ${own.armor} ARMOR` : ''}</span></div><i><b style={{ width: `${own.hp}%`, background: own.color }} /></i><small>{own.shield > 0 ? 'SPAWN SHIELD · FIRING ENDS PROTECTION' : own.dashCooldown > 0 ? `DASH IN ${own.dashCooldown.toFixed(1)}s` : 'DASH READY · SPACE'}</small></div>
-            <div className="arena-ammo"><span>{arenaWeapon(own.weapon).name.toUpperCase()}</span><strong>{own.reload > 0 ? '↻' : own.ammo}<small> / {arenaWeapon(own.weapon).magazine}</small></strong><button disabled={!active || own.reload > 0} onClick={() => { controls.current.reload = true; }}><RotateCcw size={13} />{own.reload > 0 ? `RELOADING ${own.reload.toFixed(1)}s` : 'RELOAD · R'}</button></div>
+            <div className="arena-vitals"><div><Shield size={16} /><strong>{own.hp}</strong><span>HP{own.armor > 0 ? ` + ${own.armor} ARMOR` : ''}</span></div><i><b style={{ width: `${own.hp}%`, background: own.color }} /></i><small>{own.shield > 0 ? 'SPAWN SHIELD · FIRING ENDS PROTECTION' : own.dashCooldown > 0 ? `DASH IN ${own.dashCooldown.toFixed(1)}s` : touchDevice ? 'DASH READY' : 'DASH READY · SPACE'}</small></div>
+            <div className="arena-ammo"><span>{arenaWeapon(own.weapon).name.toUpperCase()}</span><strong>{own.reload > 0 ? '↻' : own.ammo}<small> / {arenaWeapon(own.weapon).magazine}</small></strong><button disabled={!active || own.reload > 0} onClick={() => { controls.current.reload = true; }}><RotateCcw size={13} />{own.reload > 0 ? `RELOADING ${own.reload.toFixed(1)}s` : touchDevice ? 'RELOAD' : 'RELOAD · R'}</button></div>
             <div className="arena-mobile-controls"><TouchPad kind="move" controls={controls} disabled={!active} /><button className="arena-dash" disabled={!active || own.dashCooldown > 0} onClick={() => { controls.current.dash = true; }}><Zap size={20} />DASH</button><TouchPad kind="aim" controls={controls} disabled={!active} /></div>
             <div className="arena-weapon-note">Walk over glowing stations to switch weapons, heal, or gain armor.</div>
             <div className="arena-hit-flash" style={{ opacity: own.hit > 0 ? 0.45 : 0 }} />
