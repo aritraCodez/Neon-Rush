@@ -43,3 +43,23 @@
 .game-stage.stage-expanded{position:fixed;inset:0;z-index:1000;width:100%;height:100dvh;min-height:0;border:0;border-radius:0}
 .game-stage.stage-expanded .fullscreen-button{bottom:max(12px,env(safe-area-inset-bottom));right:max(12px,env(safe-area-inset-right));background:#141b2dcc;border:1px solid #46516b}
 .fullscreen-note{z-index:1001}
+
+.game-stage:fullscreen{min-height:0;container-type:size}
+.game-stage:fullscreen .intro{top:84px;bottom:58px;left:clamp(28px,6vw,112px);max-width:min(440px,calc(100% - 56px));display:flex;flex-direction:column;align-items:flex-start;justify-content:safe center;overflow-y:auto;padding:4px 8px 4px 0}
+.game-stage:fullscreen .intro>*{flex-shrink:0}
+.game-stage:fullscreen .intro h1{font-size:clamp(64px,15cqh,160px);margin:clamp(12px,2cqh,24px) 0}
+.game-stage:fullscreen .intro-description{margin:9px 0 20px}
+.game-stage:fullscreen .start-button{width:min(100%,320px);min-height:54px;white-space:nowrap}
+.game-stage:fullscreen .intro-secondary{flex-wrap:wrap;gap:8px 13px;margin-top:12px}
+.game-stage:fullscreen .intro-secondary button{min-height:28px}
+@media(max-height:600px) and (orientation:landscape){
+  .game-stage:fullscreen .intro{top:80px;bottom:48px}
+  .game-stage:fullscreen .intro h1{font-size:clamp(40px,13cqh,76px);margin:10px 0}
+  .game-stage:fullscreen .intro-tagline{margin-bottom:12px}
+  .game-stage:fullscreen .start-button{min-height:48px}
+  .game-stage:fullscreen .intro-secondary{margin-top:8px}
+}
+@media(max-height:450px) and (orientation:landscape){
+  .game-stage:fullscreen .intro{top:72px;bottom:44px}
+  .game-stage:fullscreen .intro>.eyebrow,.game-stage:fullscreen .intro-tagline{display:none}
+}
