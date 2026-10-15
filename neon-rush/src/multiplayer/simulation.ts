@@ -21,12 +21,14 @@ export class ArenaSimulation {
   private reload = false;
   private renderTime = 0;
   private tracerAt = 0;
+  private localAmmo = 0;
+  private localReload = 0;
 
   reset(ack = 0) {
     this.room = null; this.predicted = null; this.pending = []; this.history = [];
     this.sequence = ack; this.sent = ack; this.accumulator = 0;
     this.offsetX = 0; this.offsetZ = 0; this.dash = false; this.reload = false; this.renderTime = 0;
-    this.tracers = []; this.tracerAt = 0;
+    this.tracers = []; this.tracerAt = 0; this.localAmmo = 0; this.localReload = 0;
   }
   receive(room: ArenaSnapshot, playerId: string, now: number) {
     if (this.room && room.code === this.room.code && room.snapshotId <= this.room.snapshotId) return false;
@@ -39,7 +41,7 @@ export class ArenaSimulation {
     const discontinuity = !this.room || this.room.code !== room.code || this.room.round !== room.round || this.room.mapId !== room.mapId ||
       this.room.phase !== room.phase || this.predicted?.deaths !== own?.deaths ||
       (this.predicted?.hp === 0) !== (own?.hp === 0);
-    if (discontinuity) { this.history = []; this.renderTime = 0; this.offsetX = 0; this.offsetZ = 0; this.accumulator = 0; this.tracers = []; this.tracerAt = 0; }
+    if (discontinuity) { this.history = []; this.renderTime = 0; this.offsetX = 0; this.offsetZ = 0; this.accumulator = 0; this.tracers = []; this.tracerAt = 0; this.localAmmo = 0; this.localReload = 0; }
     this.history.push({ room, arrived: now });
     if (this.history.length > 32) this.history.shift();
     this.room = room;
@@ -65,6 +67,8 @@ export class ArenaSimulation {
       }
     }
     this.predicted = corrected;
+    this.localAmmo = own.ammo;
+    this.localReload = own.reload;
     return true;
   }
   advance(dt: number, raw: ArenaInput) {
@@ -78,6 +82,7 @@ export class ArenaSimulation {
       const command = { ...input, seq: ++this.sequence, dash: this.dash, reload: this.reload };
       this.dash = false; this.reload = false;
       this.pending.push(command); movePlayer(this.predicted, command, INPUT_DT, arenaMap(this.room.mapId));
+      this.localReload = Math.max(0, this.localReload - INPUT_DT);
       this.predictShot(command);
       this.accumulator -= INPUT_DT;
     }
@@ -136,21 +141,24 @@ export class ArenaSimulation {
     const live = latest.room.bullets;
     this.tracers = this.tracers.filter(tracer => {
       const age = (now - tracer.id) / 1000;
-      if (age > 0.22) return false;
-      return !live.some(bullet => bullet.owner === owner && Math.hypot(bullet.x - (tracer.x + tracer.vx * elapsed), bullet.z - (tracer.z + tracer.vz * elapsed)) < 2.4);
+      if (age > 0.16) return false;
+      return !live.some(bullet => bullet.owner === owner && Math.hypot(bullet.x - (tracer.x + tracer.vx * elapsed), bullet.z - (tracer.z + tracer.vz * elapsed)) < 1.6);
     });
     return { bullets: [...live, ...this.tracers], elapsed };
   }
   private predictShot(input: ArenaInput) {
-    if (!input.fire || !this.predicted || this.predicted.hp <= 0 || this.predicted.reload > 0 || this.predicted.ammo <= 0) return;
+    if (!input.fire || !this.predicted || this.predicted.hp <= 0 || this.localReload > 0 || this.localAmmo <= 0) return;
     const weapon = arenaWeapon(this.predicted.weapon);
     const now = performance.now();
     if (now - this.tracerAt < weapon.interval * 1000) return;
     this.tracerAt = now;
+    this.localAmmo--;
+    if (this.localAmmo <= 0) this.localReload = weapon.reload;
     const origin = muzzlePoint(this.predicted.x + this.offsetX, this.predicted.z + this.offsetZ, this.predicted.angle);
     this.tracers.push({
       id: now, owner: this.predicted.id, x: origin.x, z: origin.z,
       vx: -Math.sin(this.predicted.angle) * weapon.speed, vz: -Math.cos(this.predicted.angle) * weapon.speed, color: weapon.color,
     });
+    if (this.tracers.length > 6) this.tracers.shift();
   }
 }

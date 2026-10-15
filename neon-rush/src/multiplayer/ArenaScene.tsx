@@ -88,10 +88,18 @@ function ArenaWorld({ room, playerId, controls, labels, client }: { client: Aren
       pointer.current = new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2);
       controls.current.touchAim = false;
     };
-    const down = (event: PointerEvent) => { if (event.pointerType !== 'mouse' || event.button !== 0) return; move(event); canvas.focus({ preventScroll: true }); canvas.setPointerCapture(event.pointerId); controls.current.firing = true; };
+    const down = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse' || event.button !== 0) return;
+      if ((event.target as HTMLElement | null)?.closest('input, textarea, button, .arena-chat-pop')) return;
+      move(event); controls.current.firing = true;
+    };
     const stop = () => { controls.current.firing = false; };
-    canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointerup', stop); canvas.addEventListener('pointercancel', stop); canvas.addEventListener('lostpointercapture', stop);
-    return () => { canvas.removeEventListener('pointermove', move); canvas.removeEventListener('pointerdown', down); canvas.removeEventListener('pointerup', stop); canvas.removeEventListener('pointercancel', stop); canvas.removeEventListener('lostpointercapture', stop); stop(); };
+    canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerdown', down);
+    window.addEventListener('pointerup', stop, true); window.addEventListener('pointercancel', stop, true);
+    return () => {
+      canvas.removeEventListener('pointermove', move); canvas.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointerup', stop, true); window.removeEventListener('pointercancel', stop, true); stop();
+    };
   }, [gl, controls]);
   const target = useMemo(() => new THREE.Vector3(), []);
   useFrame((_, dt) => {

@@ -41,8 +41,8 @@ export function useArenaControls(client: ArenaClient, active: boolean) {
     frame = requestAnimationFrame(tick);
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', reset);
     document.addEventListener('visibilitychange', hidden);
-    window.addEventListener('pointerup', release); window.addEventListener('pointercancel', release);
-    return () => { cancelAnimationFrame(frame); reset(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', reset); document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pointerup', release); window.removeEventListener('pointercancel', release); };
+    window.addEventListener('pointerup', release, true); window.addEventListener('pointercancel', release, true);
+    return () => { cancelAnimationFrame(frame); reset(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', reset); document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pointerup', release, true); window.removeEventListener('pointercancel', release, true); };
   }, [client, active]);
   return controls;
 }

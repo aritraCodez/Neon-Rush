@@ -27,7 +27,9 @@
 .arena-comm.is-talking{box-shadow:0 0 12px #bdff5466}
 .arena-comm>b{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ff4d7a;color:#fff;font-size:9px;display:grid;place-items:center}
 .header-actions .arena-comm{width:34px;height:34px}
-.arena-chat-pop{position:fixed;z-index:1200;top:max(72px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:min(340px,calc(100vw - 24px));max-height:min(70dvh,520px);overflow:auto;background:#0d1a27f2;border:1px solid #3a536a;border-radius:10px;padding:10px;box-shadow:0 16px 40px #0008}
+.arena-chat-pop{position:fixed;z-index:1200;top:max(72px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:min(340px,calc(100vw - 24px));max-height:min(70dvh,520px);overflow:auto;background:#0d1a27f2;border:1px solid #3a536a;border-radius:10px;padding:10px;box-shadow:0 16px 40px #0008;pointer-events:auto}
+.arena-stage .arena-chat-pop{position:absolute;top:max(58px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:30;width:min(320px,calc(100% - 24px))}
+.arena-stage:fullscreen .arena-chat-pop,.arena-expanded .arena-chat-pop{position:absolute;top:max(58px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right))}
 .arena-chat-pop-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:9px;letter-spacing:1.4px;color:#8dafc7}
 .arena-chat-pop .arena-chat{margin:0;border:0;padding:0;background:none}
 .arena-chat input,.arena-field input{font-size:16px!important;line-height:1.25;min-height:44px;-webkit-text-size-adjust:100%}
