@@ -12,6 +12,8 @@ import { getRigJoints, poseRig } from '../game/rigAnimation';
 import type { RigJoints, RigMotion } from '../game/rigAnimation';
 
 export const RUNNER_GLB = '/models/neon-runner.glb?v=expressive';
+// Some distributions use only the built-in procedural character.
+const hasBundledRunner = Object.keys(import.meta.glob('/public/models/neon-runner.glb')).length > 0;
 
 type Vec3 = [number, number, number];
 type PoseFn = () => { motion: RigMotion; time: number };
@@ -228,6 +230,7 @@ class ModelBoundary extends Component<{ children: ReactNode; fallback: ReactNode
 
 export function RunnerModel(props: RunnerProps) {
   const fallback = <ProceduralRunner {...props} />;
+  if (!hasBundledRunner) return fallback;
   return <ModelBoundary fallback={fallback}>
     <Suspense fallback={fallback}>
       <GltfRunner {...props} />
@@ -235,4 +238,4 @@ export function RunnerModel(props: RunnerProps) {
   </ModelBoundary>;
 }
 
-useLoader.preload(GLTFLoader, RUNNER_GLB);
+if (hasBundledRunner) useLoader.preload(GLTFLoader, RUNNER_GLB);

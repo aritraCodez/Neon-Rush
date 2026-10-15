@@ -3,15 +3,15 @@ import type { ArenaClient } from './client';
 import type { ArenaInput } from '../../shared/multiplayer';
 
 export interface ArenaControls {
-  move: { x: number; z: number }; aim: { x: number; z: number }; firing: boolean;
+  move: { x: number; z: number }; aim: { x: number; z: number }; firing: boolean; touchFiring: boolean;
   dash: boolean; reload: boolean; touchAim: boolean; held: Set<string>;
   aimDirection: { x: number; z: number };
 }
 export function useArenaControls(client: ArenaClient, active: boolean) {
-  const controls = useRef<ArenaControls>({ move: { x: 0, z: 0 }, aim: { x: 0, z: 0 }, firing: false, dash: false, reload: false, touchAim: false, held: new Set(), aimDirection: { x: 0, z: -1 } });
+  const controls = useRef<ArenaControls>({ move: { x: 0, z: 0 }, aim: { x: 0, z: 0 }, firing: false, touchFiring: false, dash: false, reload: false, touchAim: false, held: new Set(), aimDirection: { x: 0, z: -1 } });
   useEffect(() => {
     const input = controls.current;
-    const reset = () => { input.move = { x: 0, z: 0 }; input.firing = false; input.dash = false; input.reload = false; input.held.clear(); client.input({ dx: 0, dz: 0, aimX: input.aim.x, aimZ: input.aim.z, fire: false }); };
+    const reset = () => { input.move = { x: 0, z: 0 }; input.firing = false; input.touchFiring = false; input.dash = false; input.reload = false; input.held.clear(); client.input({ dx: 0, dz: 0, aimX: input.aim.x, aimZ: input.aim.z, fire: false }); };
     reset();
     if (!active) return;
     const keys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'shift', 'r', 'f']);
@@ -34,7 +34,7 @@ export function useArenaControls(client: ArenaClient, active: boolean) {
       const forward = input.held.has('w') || input.held.has('arrowup'), back = input.held.has('s') || input.held.has('arrowdown');
       const own = client.simulation.predicted;
       if (input.touchAim && own) input.aim = { x: own.x + input.aimDirection.x * 30, z: own.z + input.aimDirection.z * 30 };
-      const value: ArenaInput = { dx: input.move.x + Number(right) - Number(left), dz: input.move.z + Number(back) - Number(forward), aimX: input.aim.x, aimZ: input.aim.z, fire: input.firing || input.held.has('f'), dash: input.dash, reload: input.reload };
+      const value: ArenaInput = { dx: input.move.x + Number(right) - Number(left), dz: input.move.z + Number(back) - Number(forward), aimX: input.aim.x, aimZ: input.aim.z, fire: input.firing || input.touchFiring || input.held.has('f'), ...(input.touchAim ? { aimDX: input.aimDirection.x, aimDZ: input.aimDirection.z } : {}), dash: input.dash, reload: input.reload };
       client.frame(dt, value); input.dash = false; input.reload = false;
       frame = requestAnimationFrame(tick);
     };

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ArenaRoom, cleanName, segmentBox, segmentCircle } from '../arena.mjs';
-import { ARENA } from '../../shared/arena.js';
+import { ARENA, ARENA_MAPS, arenaWeapon } from '../../shared/arena.js';
 
 function setup() {
   let now = 1000;
@@ -11,6 +11,74 @@ function setup() {
   const start = () => { room.ready('one', true); room.ready('two', true); room.start('one'); tick(3.05); };
   return { room, one, two, tick, start };
 }
+
+test('host settings validate capacity, reset readiness, enforce room limits and support twelve unique spawns', () => {
+  const { room, one, two } = setup();
+  assert.throws(() => room.configure('two', { capacity: 3 }), /host/);
+  for (const capacity of [1, 13, 2.5, '4']) assert.throws(() => room.configure('one', { capacity }), /Choose/);
+  assert.throws(() => room.configure('one', { mapId: 'missing' }), /map/);
+  room.ready('one', true); room.ready('two', true);
+  room.configure('one', { capacity: 2, mapId: 'foundry' });
+  assert.equal(one.ready, false); assert.equal(two.ready, false);
+  assert.throws(() => room.addPlayer('third', 'Third'), /full/);
+  room.configure('one', { capacity: 12 });
+  for (let i = 2; i < 12; i++) room.addPlayer(`extra${i}`, `Player ${i}`);
+  assert.equal(new Set([...room.players.values()].map(p => `${p.x},${p.z}`)).size, 12);
+  assert.throws(() => room.configure('one', { capacity: 11 }), /roster/);
+  for (const player of room.players.values()) room.ready(player.id, true);
+  room.start('one'); assert.equal(room.snapshot().mapId, 'foundry'); assert.equal(room.snapshot().capacity, 12);
+  assert.throws(() => room.configure('one', { capacity: 12 }), /lobby/);
+});
+
+test('all map spawns and pickup stations are inside the arena and clear of cover', () => {
+  for (const map of ARENA_MAPS) for (const point of [...map.spawns, ...map.pickups]) {
+    assert.ok(Math.abs(point.x) < map.width / 2 - ARENA.playerRadius);
+    assert.ok(Math.abs(point.z) < map.depth / 2 - ARENA.playerRadius);
+    assert.ok(map.cover.every(box => Math.abs(point.x - box.x) >= box.width / 2 + ARENA.playerRadius || Math.abs(point.z - box.z) >= box.depth / 2 + ARENA.playerRadius), `${map.id}: blocked station/spawn`);
+  }
+});
+
+test('pickups are awarded by server proximity, respawn, and reset weapons on death', () => {
+  const { room, one, two, start, tick } = setup(); start();
+  const pickup = room.pickups.find(p => p.kind === 'pulse');
+  Object.assign(one, { x: pickup.x, z: pickup.z });
+  tick(0.02);
+  assert.equal(one.weapon, 'pulse'); assert.equal(one.ammo, arenaWeapon('pulse').magazine);
+  assert.ok(pickup.availableIn > 11);
+  Object.assign(two, { x: pickup.x, z: pickup.z }); tick(0.02); assert.equal(two.weapon, 'blaster');
+  one.x = -11; two.x = 11; tick(12.1); assert.equal(pickup.availableIn, 0);
+  const health = room.pickups.find(p => p.kind === 'health');
+  Object.assign(one, { x: health.x, z: health.z, hp: 45 }); tick(0.02); assert.equal(one.hp, 85);
+  const armor = room.pickups.find(p => p.kind === 'armor');
+  Object.assign(one, { x: armor.x, z: armor.z }); tick(0.02); assert.equal(one.armor, 50);
+  room.respawn(one); assert.equal(one.weapon, 'blaster'); assert.equal(one.armor, 0);
+});
+
+test('weapon pickups change projectile spread, cadence and reload; armor absorbs damage', () => {
+  const { room, one, two, start, tick } = setup(); start();
+  Object.assign(one, { x: -10, z: -8, shield: 0, weapon: 'shotgun', ammo: 6 });
+  Object.assign(two, { x: 10, z: 10 });
+  room.setInput('one', { dx: 0, dz: 0, aimX: -10, aimZ: 5, fire: true }); tick(0.02);
+  assert.equal(room.bullets.length, 5); assert.equal(one.ammo, 5);
+  assert.equal(new Set(room.bullets.map(b => b.vx.toFixed(3))).size, 5);
+  room.setInput('one', { dx: 0, dz: 0, aimX: -10, aimZ: 5, fire: false, reload: true }); tick(1.8);
+  assert.equal(one.ammo, 6);
+  room.bullets = []; Object.assign(one, { weapon: 'laser', ammo: 5, cooldown: 0, reload: 0 });
+  Object.assign(two, { x: -10, z: -4, shield: 0, hp: 100, armor: 50 });
+  room.setInput('one', { dx: 0, dz: 0, aimX: two.x, aimZ: two.z, fire: true }); tick(0.1);
+  assert.equal(two.armor, 0); assert.equal(two.hp, 95);
+});
+
+test('shots align with target after movement and directional touch aim stays fixed while moving', () => {
+  const { room, one, two, start } = setup(); start();
+  Object.assign(one, { x: -10, z: -8, shield: 0 }); Object.assign(two, { x: 10, z: 10 });
+  room.setInput('one', { dx: 1, dz: 0, aimX: -10, aimZ: -4, fire: true }); room.step(1 / 60, 4100);
+  const shot = room.bullets[0]; const dx = -10 - one.x, dz = -4 - one.z;
+  assert.ok(Math.abs(shot.vx * dz - shot.vz * dx) < 1e-8);
+  room.bullets = []; one.cooldown = 0;
+  room.setInput('one', { dx: 1, dz: 1, aimX: 0, aimZ: 0, aimDX: 0, aimDZ: -1, fire: true }); room.step(1 / 60, 4100);
+  assert.ok(Math.abs(room.bullets[0].vx) < 1e-8); assert.ok(room.bullets[0].vz < 0);
+});
 test('names, capacity, host permissions, ready checks, countdown, and rematch are enforced', () => {
   const { room, one, start } = setup();
   assert.equal(cleanName('  Neon   Hero  '), 'Neon Hero');

@@ -8,6 +8,21 @@ import { applySnapshotDelta, snapshotDelta } from '../shared/snapshots.js';
 import type { ArenaCommand, ArenaPlayer, ArenaSnapshot } from '../shared/multiplayer';
 
 const neutral = { dx: 0, dz: 0, aimX: 0, aimZ: 0, fire: false };
+test('prediction uses selected map boundaries and cover, matching server on Foundry', () => {
+  const room = new ArenaRoom('ABC234', () => 1000, { mapId: 'foundry' });
+  const player = room.addPlayer('self', 'Self'); room.addPlayer('other', 'Other');
+  for (const p of room.players.values()) room.ready(p.id, true);
+  room.start('self'); room.phase = 'playing'; player.x = -7; player.z = -12;
+  const sim = new ArenaSimulation(); sim.receive(room.snapshot(), 'self', 0);
+  for (let i = 0; i < 90; i++) {
+    sim.advance(INPUT_DT, { ...neutral, dz: 1, aimDX: 1, aimDZ: 0 });
+    const commands = sim.batch(); room.enqueueInputs('self', commands); sim.sent = commands.at(-1)!.seq;
+    room.step(INPUT_DT, 1000 + i * 1000 / 60);
+  }
+  assert.ok(player.z <= -9.25 - 0.52, 'Foundry cargo blocks the player');
+  assert.ok(Math.abs(player.z - sim.predicted!.z) < 1e-8);
+  assert.ok(Math.abs(player.angle - sim.predicted!.angle) < 1e-8);
+});
 function setup(count = 2) {
   let now = 0;
   const room = new ArenaRoom('ABC234', () => now);

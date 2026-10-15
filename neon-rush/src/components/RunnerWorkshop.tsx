@@ -1,14 +1,12 @@
 import { Component, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Download, Grid3X3, Move, Pause, Play, RotateCcw, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Grid3X3, Move, Pause, Play, RotateCcw, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RunnerModel } from './RunnerModel';
 import { RUNNER_STYLES } from '../game/runnerStyle';
 import type { RunnerStyle } from '../game/runnerStyle';
-import { createRigClips, getRigJoints, poseRig } from '../game/rigAnimation';
-import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { RigMotion } from '../game/rigAnimation';
 import { WEAPONS, weaponById } from '../game/weapons';
 import type { WeaponId } from '../game/weapons';
@@ -43,9 +41,9 @@ function CameraControls({ rotating, actions }: { rotating: boolean; actions: Vie
   return null;
 }
 
-function Showroom({ style, weapon, wireframe, motion, playing, modelRef, actions, rotating }: {
+function Showroom({ style, weapon, wireframe, motion, playing, actions, rotating }: {
   style: RunnerStyle; weapon: WeaponId; wireframe: boolean; motion: RigMotion; playing: boolean;
-  modelRef: { current: THREE.Group | null }; actions: ViewControl; rotating: boolean;
+  actions: ViewControl; rotating: boolean;
 }) {
   const time = useRef(0);
   useEffect(() => { time.current = 0; }, [motion]);
@@ -59,7 +57,7 @@ function Showroom({ style, weapon, wireframe, motion, playing, modelRef, actions
     <directionalLight position={[4, 2, 2]} intensity={3.4} color={style.color} />
     <directionalLight position={[0, 3, 5]} intensity={1.6} color="#ffffff" />
     <pointLight position={[-3, 1, 2]} intensity={10} color="#b697ff" />
-    <RunnerModel style={style} weapon={weapon} wireframe={wireframe} modelRef={modelRef} pose={() => ({ motion, time: time.current })} />
+    <RunnerModel style={style} weapon={weapon} wireframe={wireframe} pose={() => ({ motion, time: time.current })} />
     <mesh position={[0, -0.095, 0]}><cylinderGeometry args={[1.25, 1.35, 0.15, 64]} /><meshStandardMaterial color="#1d2d3a" roughness={0.4} metalness={0.7} /></mesh>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}><ringGeometry args={[1.19, 1.22, 64]} /><meshBasicMaterial color={style.color} toneMapped={false} /></mesh>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.18, 0]}><planeGeometry args={[50, 50]} /><meshStandardMaterial color="#101b29" roughness={0.8} /></mesh>
@@ -81,35 +79,10 @@ export function RunnerWorkshop({ style, onStyle, reduced, unlocked }: { style: R
   const [playing, setPlaying] = useState(!reduced);
   const [rotating, setRotating] = useState(false);
   const [wireframe, setWireframe] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [status, setStatus] = useState('');
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const modelRef = useRef<THREE.Group | null>(null);
   const actions = useRef<((action: ViewAction) => void) | null>(null);
   const spec = weaponById(weapon);
-
-  async function exportModel() {
-    if (!modelRef.current || exporting) return;
-    setExporting(true); setStatus('Preparing your model…');
-    try {
-      // Work on a clone so sampling export clips never changes the visible pose.
-      const clips = modelRef.current.userData.clips as THREE.AnimationClip[] | undefined;
-      const model = clips?.length ? cloneSkinned(modelRef.current) as THREE.Group : modelRef.current.clone(true);
-      const animations = clips?.length ? clips : createRigClips(model);
-      if (!clips?.length) poseRig(getRigJoints(model), 'idle', 0);
-      model.updateMatrixWorld(true);
-      const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
-      const result = await new GLTFExporter().parseAsync(model, { binary: true, animations, onlyVisible: true });
-      if (!(result instanceof ArrayBuffer)) throw new Error('Unexpected model format');
-      const url = URL.createObjectURL(new Blob([result], { type: 'model/gltf-binary' }));
-      const link = document.createElement('a'); link.href = url; link.download = `neon-runner-${style.id}-${weapon}.glb`;
-      document.body.appendChild(link); link.click(); link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setStatus('Model exported with Idle, Run, Jump, and Aim animations.');
-    } catch { setStatus('The model could not be exported. Please try again.'); }
-    finally { setExporting(false); }
-  }
 
   return <div className="workshop" style={{ '--runner-accent': style.color } as CSSProperties}>
     <div className="workshop-heading"><span><i /> RUNNER LAB / MK. III</span><span>REAL-TIME 3D</span></div>
@@ -124,7 +97,7 @@ export function RunnerWorkshop({ style, onStyle, reduced, unlocked }: { style: R
             setReady(true);
             gl.domElement.addEventListener('webglcontextlost', event => { event.preventDefault(); setFailed(true); }, { once: true });
           }}>
-            <Showroom style={style} weapon={weapon} wireframe={wireframe} motion={motion} playing={playing} modelRef={modelRef} actions={actions} rotating={rotating} />
+            <Showroom style={style} weapon={weapon} wireframe={wireframe} motion={motion} playing={playing} actions={actions} rotating={rotating} />
           </Canvas>
         </PreviewBoundary>}
         {!ready && !failed && <div className="workshop-loading">ASSEMBLING RUNNER…</div>}
@@ -153,7 +126,6 @@ export function RunnerWorkshop({ style, onStyle, reduced, unlocked }: { style: R
         <section><div className="lab-section-title"><span>03</span><h3>Motion test</h3><button className="motion-toggle" aria-label={playing ? 'Pause model animation' : 'Play model animation'} disabled={failed} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={14} /> : <Play size={14} />}</button></div>
           <div className="motion-options">{(['idle', 'run', 'jump', 'aim'] as RigMotion[]).map(option => <button key={option} aria-pressed={motion === option} disabled={failed} onClick={() => { setMotion(option); setPlaying(true); }}>{option}</button>)}</div>
         </section>
-        <div className="model-export"><button className="secondary-button" onClick={() => void exportModel()} disabled={!ready || failed || exporting}><Download size={16} />{exporting ? 'PREPARING MODEL…' : 'EXPORT 3D MODEL'}</button><p>GLB · includes 4 animations · opens in Blender</p><p className="export-status" role="status">{status}</p></div>
       </div>
     </div>
     <div className="workshop-footnote"><span><i /> FINISH SAVED ON THIS BROWSER</span><span>Drag to explore. Make it yours.</span></div>

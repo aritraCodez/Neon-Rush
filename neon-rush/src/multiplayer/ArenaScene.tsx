@@ -1,17 +1,19 @@
-import { Component, memo, useMemo, useRef } from 'react';
+import { Component, memo, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RunnerModel } from '../components/RunnerModel';
 import { GraphicsLifecycle } from '../components/GraphicsLifecycle';
 import { RUNNER_STYLES } from '../game/runnerStyle';
-import { ARENA, ARENA_COVER } from '../../shared/arena.js';
+import { arenaMap } from '../../shared/arena.js';
 import type { ArenaSnapshot, ArenaPlayer } from '../../shared/multiplayer';
 import type { ArenaClient } from './client';
 import type { ArenaControls } from './useArenaControls';
 
+import { ArenaEnvironment, ArenaPickups } from './ArenaEnvironment';
+
 type LabelMap = Map<string, HTMLDivElement>;
-const ArenaRunner = memo(function ArenaRunner({ id, room, playerId, labels, client }: { client: ArenaClient; id: string; room: RefObject<ArenaSnapshot>; playerId: string; labels: RefObject<LabelMap> }) {
+const ArenaRunner = memo(function ArenaRunner({ id, room, playerId, labels, client, weapon }: { weapon: ArenaPlayer['weapon']; client: ArenaClient; id: string; room: RefObject<ArenaSnapshot>; playerId: string; labels: RefObject<LabelMap> }) {
   const root = useRef<THREE.Group>(null);
   const shield = useRef<THREE.Mesh>(null);
   const muzzle = useRef<THREE.Mesh>(null);
@@ -43,10 +45,10 @@ const ArenaRunner = memo(function ArenaRunner({ id, room, playerId, labels, clie
   });
   const finish = RUNNER_STYLES.find(style => style.id === player.style) ?? RUNNER_STYLES[0];
   return <group ref={root} position={[initial.current.x, 0, initial.current.z]}>
-    <RunnerModel style={{ ...finish, color: player.color }} weapon="blaster" pose={() => pose.current} />
+    <RunnerModel style={{ ...finish, color: player.color }} weapon={weapon ?? 'blaster'} pose={() => pose.current} />
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}><ringGeometry args={[0.62, id === playerId ? 0.78 : 0.68, 32]} /><meshBasicMaterial color={player.color} toneMapped={false} /></mesh>
     <mesh ref={shield} position={[0, 1.05, 0]}><sphereGeometry args={[1.1, 16, 12]} /><meshBasicMaterial color={player.color} wireframe transparent opacity={0.2} /></mesh>
-    <mesh ref={muzzle} visible={false} position={[0.43, 1.05, -1.07]}><octahedronGeometry args={[0.24]} /><meshBasicMaterial color={player.color} toneMapped={false} /></mesh>
+    <mesh ref={muzzle} visible={false} position={[0, 1.05, -0.8]}><octahedronGeometry args={[0.24]} /><meshBasicMaterial color={player.color} toneMapped={false} /></mesh>
   </group>;
 });
 
@@ -59,7 +61,7 @@ function Bolts({ client }: { client: ArenaClient }) {
     const frame = client.simulation.bulletFrame(client.renderTime);
     const bullets = frame?.bullets ?? [];
     const elapsed = frame ? Math.max(0, Math.min(0.08, (client.renderTime - frame.serverTime) / 1000)) : 0;
-    mesh.current.count = Math.min(128, bullets.length);
+    mesh.current.count = Math.min(512, bullets.length);
     for (let index = 0; index < mesh.current.count; index++) {
       const bullet = bullets[index];
       object.position.set(bullet.x + bullet.vx * elapsed, 1.05, bullet.z + bullet.vz * elapsed); object.rotation.set(0, Math.atan2(bullet.vx, bullet.vz), 0); object.updateMatrix();
@@ -67,11 +69,29 @@ function Bolts({ client }: { client: ArenaClient }) {
     }
     mesh.current.instanceMatrix.needsUpdate = true; if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true;
   });
-  return <instancedMesh ref={mesh} args={[undefined, undefined, 128]} frustumCulled={false}><boxGeometry args={[0.12, 0.12, 0.7]} /><meshBasicMaterial toneMapped={false} /></instancedMesh>;
+  return <instancedMesh ref={mesh} args={[undefined, undefined, 512]} frustumCulled={false}><boxGeometry args={[0.12, 0.12, 0.7]} /><meshBasicMaterial toneMapped={false} /></instancedMesh>;
 }
 
 function ArenaWorld({ room, playerId, controls, labels, client }: { client: ArenaClient; room: RefObject<ArenaSnapshot>; playerId: string; controls: RefObject<ArenaControls>; labels: RefObject<LabelMap> }) {
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
+  const map = arenaMap(room.current.mapId);
+  const pointer = useRef<THREE.Vector2 | null>(null);
+  const ray = useMemo(() => new THREE.Raycaster(), []);
+  const aimPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.05), []);
+  const hit = useMemo(() => new THREE.Vector3(), []);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const move = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return;
+      const rect = canvas.getBoundingClientRect();
+      pointer.current = new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2);
+      controls.current.touchAim = false;
+    };
+    const down = (event: PointerEvent) => { if (event.pointerType !== 'mouse' || event.button !== 0) return; move(event); canvas.focus({ preventScroll: true }); canvas.setPointerCapture(event.pointerId); controls.current.firing = true; };
+    const stop = () => { controls.current.firing = false; };
+    canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointerup', stop); canvas.addEventListener('pointercancel', stop); canvas.addEventListener('lostpointercapture', stop);
+    return () => { canvas.removeEventListener('pointermove', move); canvas.removeEventListener('pointerdown', down); canvas.removeEventListener('pointerup', stop); canvas.removeEventListener('pointercancel', stop); canvas.removeEventListener('lostpointercapture', stop); stop(); };
+  }, [gl, controls]);
   const target = useMemo(() => new THREE.Vector3(), []);
   useFrame((_, dt) => {
     client.rendered(); client.renderTime = client.simulation.sampleTime(performance.now());
@@ -82,28 +102,25 @@ function ArenaWorld({ room, playerId, controls, labels, client }: { client: Aren
     camera.position.x = THREE.MathUtils.damp(camera.position.x, x, 4, dt);
     camera.position.y = THREE.MathUtils.damp(camera.position.y, narrow ? 21 : 29, 4, dt);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, z + (narrow ? 16 : 23), 4, dt);
-    target.set(camera.position.x, 0, camera.position.z - (narrow ? 16 : 23)); camera.lookAt(target);
+    target.set(camera.position.x, 0, camera.position.z - (narrow ? 16 : 23)); camera.lookAt(target); camera.updateMatrixWorld();
+    if (pointer.current && !controls.current.touchAim) {
+      ray.setFromCamera(pointer.current, camera);
+      if (ray.ray.intersectPlane(aimPlane, hit)) { controls.current.aim.x = hit.x; controls.current.aim.z = hit.z; }
+    }
   }, -1);
-  const aim = (x: number, z: number) => { controls.current.aim.x = x; controls.current.aim.z = z; controls.current.touchAim = false; };
   return <>
     <color attach="background" args={['#070d19']} /><fog attach="fog" args={['#070d19', 48, 95]} />
     <ambientLight intensity={1.6} color="#bed4ee" /><directionalLight position={[8, 18, 12]} intensity={3.5} color="#d2e9ff" />
     <pointLight position={[-9, 4, -10]} intensity={60} distance={25} color="#b063f5" /><pointLight position={[9, 4, 10]} intensity={70} distance={25} color="#53e9ff" />
-    <mesh rotation={[-Math.PI / 2, 0, 0]} onPointerMove={event => { if (event.pointerType === 'mouse') aim(event.point.x, event.point.z); }} onPointerDown={event => {
-      if (event.pointerType === 'mouse' && event.button === 0) { aim(event.point.x, event.point.z); controls.current.firing = true; }
-    }}><planeGeometry args={[160, 160]} /><meshStandardMaterial color="#101b2c" roughness={0.64} metalness={0.4} /></mesh>
+    <mesh rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[160, 160]} /><meshStandardMaterial color="#101b2c" roughness={0.64} metalness={0.4} /></mesh>
     <gridHelper args={[80, 40, '#31435d', '#1c2b41']} position={[0, 0.01, 0]} />
-    <mesh position={[0, -0.15, 0]}><boxGeometry args={[ARENA.width, 0.25, ARENA.depth]} /><meshStandardMaterial color="#142439" metalness={0.6} roughness={0.45} /></mesh>
+    <mesh position={[0, -0.15, 0]}><boxGeometry args={[map.width, 0.25, map.depth]} /><meshStandardMaterial color="#142439" metalness={0.6} roughness={0.45} /></mesh>
     {[-1, 1].map(side => <group key={side}>
-      <mesh position={[side * ARENA.width / 2, 0.15, 0]}><boxGeometry args={[0.16, 0.3, ARENA.depth]} /><meshStandardMaterial color="#57e8f5" emissive="#57e8f5" emissiveIntensity={2} /></mesh>
-      <mesh position={[0, 0.15, side * ARENA.depth / 2]}><boxGeometry args={[ARENA.width, 0.3, 0.16]} /><meshStandardMaterial color="#bb7cfa" emissive="#bb7cfa" emissiveIntensity={2} /></mesh>
+      <mesh position={[side * map.width / 2, 0.15, 0]}><boxGeometry args={[0.16, 0.3, map.depth]} /><meshStandardMaterial color="#57e8f5" emissive="#57e8f5" emissiveIntensity={2} /></mesh>
+      <mesh position={[0, 0.15, side * map.depth / 2]}><boxGeometry args={[map.width, 0.3, 0.16]} /><meshStandardMaterial color="#bb7cfa" emissive="#bb7cfa" emissiveIntensity={2} /></mesh>
     </group>)}
-    {ARENA_COVER.map((box, index) => <group key={index} position={[box.x, 0, box.z]}>
-      <mesh position={[0, index === 4 ? 1.2 : 0.7, 0]}><boxGeometry args={[box.width, index === 4 ? 2.4 : 1.4, box.depth]} /><meshStandardMaterial color="#2b3b52" metalness={0.6} roughness={0.36} /></mesh>
-      <mesh position={[0, index === 4 ? 2.42 : 1.42, 0]}><boxGeometry args={[box.width + 0.03, 0.055, box.depth + 0.03]} /><meshStandardMaterial color={index === 4 ? '#b48af9' : '#57e8f5'} emissive={index === 4 ? '#b48af9' : '#57e8f5'} emissiveIntensity={1.5} /></mesh>
-      {index === 4 && <mesh position={[0, 3.1, 0]}><octahedronGeometry args={[0.5]} /><meshStandardMaterial color="#c998ff" emissive="#bf8fff" emissiveIntensity={2} /></mesh>}
-    </group>)}
-    {room.current.players.map(player => <ArenaRunner key={player.id} id={player.id} room={room} playerId={playerId} labels={labels} client={client} />)}
+    <ArenaEnvironment map={map} /><ArenaPickups room={room} />
+    {room.current.players.map(player => <ArenaRunner key={player.id} id={player.id} weapon={player.weapon} room={room} playerId={playerId} labels={labels} client={client} />)}
     <Bolts client={client} />
   </>;
 }

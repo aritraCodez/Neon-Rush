@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 
 const browser = await chromium.launch({ headless: true, ...(process.env.NEON_BROWSER ? { executablePath: process.env.NEON_BROWSER } : {}), args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1050 }, deviceScaleFactor: 1 });
@@ -15,7 +15,6 @@ try {
   await page.getByRole('button', { name: 'Open 3D Runner Lab' }).click();
   const dialog = page.getByRole('dialog', { name: 'Your runner. Your signature.' });
   await dialog.waitFor();
-  await page.getByRole('button', { name: 'EXPORT 3D MODEL' }).waitFor();
   await page.getByRole('button', { name: 'Pause model animation' }).click();
   const canvas = page.locator('.workshop-view canvas');
   await canvas.waitFor();
@@ -50,39 +49,6 @@ try {
   }
   await page.getByRole('button', { name: 'Pause model animation' }).click();
   await page.screenshot({ path: 'test-results/runner-lab-desktop.png', fullPage: true });
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'EXPORT 3D MODEL' }).click()]);
-  assert.equal(download.suggestedFilename(), 'neon-runner-nova-laser.glb');
-  await download.saveAs('test-results/neon-runner-nova-laser.glb');
-  const bytes = await readFile('test-results/neon-runner-nova-laser.glb');
-  assert.equal(bytes.subarray(0, 4).toString(), 'glTF');
-  assert.equal(bytes.readUInt32LE(4), 2);
-  assert.equal(bytes.readUInt32LE(8), bytes.length);
-  const asset = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString());
-  assert.deepEqual([...asset.animations.map(animation => animation.name)].sort(), ['aim', 'idle', 'jump', 'run']);
-  assert.ok(asset.meshes.length >= 10);
-  for (const animation of asset.animations) {
-    assert.ok(animation.channels.length > 0, 'Animation has channels');
-    for (const channel of animation.channels) assert.ok(asset.nodes[channel.target.node], 'Animation targets an existing exported joint');
-  }
-  assert.ok(!asset.buffers.some(buffer => buffer.uri), 'Export is a self-contained GLB');
-  // Load the downloaded binary back through Three.js, including its animation bindings.
-  const roundTrip = await page.evaluate(async base64 => {
-    const { GLTFLoader } = await import('/node_modules/three/examples/jsm/loaders/GLTFLoader.js');
-    const { AnimationMixer, Vector3 } = await import('/node_modules/three/build/three.module.js');
-    const data = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
-    const gltf = await new GLTFLoader().parseAsync(data.buffer, '');
-    const mixer = new AnimationMixer(gltf.scene);
-    const leg = gltf.scene.getObjectByName('NR_leg_L') || gltf.scene.getObjectByName('Leg.L') || gltf.scene.getObjectByName('Foot.L');
-    gltf.scene.updateMatrixWorld(true);
-    const before = new Vector3();
-    leg.getWorldPosition(before);
-    mixer.clipAction(gltf.animations.find(clip => clip.name === 'run')).play(); mixer.update(0.125);
-    gltf.scene.updateMatrixWorld(true);
-    const after = new Vector3();
-    leg.getWorldPosition(after);
-    return { clips: gltf.animations.length, moved: before.distanceTo(after) > 0.001 };
-  }, bytes.toString('base64'));
-  assert.equal(roundTrip.clips, 4); assert.ok(roundTrip.moved, 'Exported run animation moves the imported leg');
   await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByRole('button', { name: 'Open 3D Runner Lab' }).click();
@@ -114,6 +80,6 @@ try {
   await page.getByRole('button', { name: 'Play model animation' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Auto rotate model' }).getAttribute('aria-pressed'), 'false');
   assert.deepEqual(errors, [], 'No browser runtime errors');
-  console.log(JSON.stringify({ result: 'passed', checks: ['pointer and keyboard orbit', 'zoom', 'wireframe', 'persistent armor', 'weapon previews and lock messaging', 'animation controls', 'GLB download and animated round trip', 'mobile overflow', 'pause and resume gameplay', 'reduced motion'], exportBytes: bytes.length, errors }));
+  console.log(JSON.stringify({ result: 'passed', checks: ['pointer and keyboard orbit', 'zoom', 'wireframe', 'persistent armor', 'weapon previews and lock messaging', 'animation controls', 'mobile overflow', 'pause and resume gameplay', 'reduced motion'], errors }));
 } catch (error) { await page.screenshot({ path: 'test-results/runner-lab-failure.png', fullPage: true }); throw error; }
 finally { await browser.close(); }

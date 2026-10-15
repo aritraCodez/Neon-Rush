@@ -22,14 +22,30 @@ See the [architecture overview in the README](../../README.md#multiplayer).
 | --- | --- | --- |
 | Move | WASD / arrow keys | Left pad |
 | Aim | Mouse over arena | Right pad |
-| Fire | Hold left mouse button or F | Hold/drag right pad |
+| Fire | Hold left mouse button or F | Drag right pad away from the touch-down point; release to stop. Tapping does not fire |
 | Dash | Space / Shift while moving | Dash while moving |
 | Reload | R or Reload button | Reload button |
 | Voice chat | Enable Mic for open-mic conversation; hold V while muted | Enable Mic for open-mic conversation; hold TALK while muted |
 | Mute / deafen | MIC MUTED / HEARING buttons | Same buttons in the voice dock |
 | Text chat | Type in Room Chat, Enter to send | Same Room Chat field |
 
-Rooms hold 2–6 players. Everyone must be ready. Rounds last 3 minutes or end when someone reaches 10 eliminations. The highest elimination count wins; equal counts share the win. Players respawn after 3 seconds. Spawn shields last 1.5 seconds, and firing ends protection. Cover stops movement and shots. The server controls movement speed, ammunition, damage, respawns, and results. Weapon/armor upgrades from solo play do not change PvP stats.
+Hosts set room capacity with **+ / −**, from 2 to 12 players including the host (default 6), and select a map before starting. Capacity cannot go below the current roster. Changing settings clears readiness so everyone confirms the new setup. Everyone must be ready. Rounds last 3 minutes or end when someone reaches 10 eliminations. The highest elimination count wins; equal counts share the win. Players respawn after 3 seconds. Spawn shields last 1.5 seconds, and firing ends protection. Cover stops movement and shots. The server controls movement speed, ammunition, damage, respawns, and results. Weapon/armor upgrades from solo play do not change PvP stats.
+
+### Maps, aiming, and pickups
+
+`shared/arena.js` defines both layouts, cover collision boxes, spawn points, pickup stations, and weapon stats. **The Exchange** is compact; **Orbital Foundry** is a larger industrial arena assembled from locally served [Kenney Space Kit assets and license](../public/models/arena/SOURCE.md). Models are normalized to the shared cover dimensions; the server uses simple collision boxes rather than loading 3D files. Decorative antennas sit outside the playable boundary. Asset failures fall back to visible cover boxes.
+
+The desktop cursor is projected onto the bullet-height plane every frame, including while the camera moves. The server calculates the firing angle after movement. Touch controls send a direction vector from the right-pad drag, independent of the moving player's predicted position. The left pad never sets fire. Pointer release, cancellation, or lost focus clears firing.
+
+Walking within one unit of a ready station collects it. The server awards pickups and broadcasts the changed weapon, ammo, health, armor, and station cooldown to every player. Weapon stations refill the selected weapon and return after 12 seconds; health and armor stations return after 18 seconds. Death resets the player to the default blaster with no armor.
+
+| Pickup | Effect |
+| --- | --- |
+| Pulse | Rapid fire, 32 rounds, 12 damage per shot |
+| Shotgun | Five spread pellets, 12 damage each, 6 shells; short range |
+| Rail blaster | Fast, precise projectile, 55 damage, 5 rounds |
+| Health | Restore 40 health, capped at 100; skipped at full health |
+| Armor | Restore armor to 50; absorbs damage before health |
 
 Matches continue when a tab loses focus; input stops automatically. A disconnected player has 20 seconds to reconnect with the same browser tab/session. Refreshing an active match restores that session during the grace period. A connected player takes over hosting when the host disconnects. Intentional departure releases the slot immediately. Display names are room nicknames, not authenticated accounts.
 
@@ -173,11 +189,13 @@ References: [WebRTC peer connections and signaling](https://webrtc.org/getting-s
 
 ## Scaling, limitations, and verification
 
-Voice uses a **peer-to-peer mesh**. With six players, each browser has five peer connections, for 15 connections across the room. Browser upload and connection costs grow with room size; an SFU is a possible future design for larger groups.
+Voice uses a **peer-to-peer mesh**. With six players, each browser has five peer connections, for 15 connections across the room; at the 12-player limit this becomes 11 per browser and 66 across the room. Browser upload and connection costs grow with room size; an SFU is a possible future design for larger groups.
 
 The backend currently runs rooms in a single Node.js process with in-memory state. Restarting it loses rooms, sessions, and chat history. Scaling to multiple backend processes requires routing each room to its owning process or introducing coordination; adding replicas alone does not share the existing `Map` objects. TURN and an SFU are future infrastructure options, not existing features.
 
 Gameplay verification includes simulation tests, real WebSocket tests, and a browser multiplayer check. The voice-specific [browser regression script](../scripts/voice-browser-check.mjs) uses separate desktop and mobile-emulated browser contexts with fake microphones, checks received audio energy and playing audio elements in both directions, and exercises mute/unmute, push-to-talk, deafen/restore, simultaneous ICE restart, reconnect, and blocked playback recovery. These local browser checks do not prove connectivity on every real-world network or physical Android device.
+
+With Vite running, `node scripts/multiplayer-browser-check.mjs` checks desktop aiming, separate touch movement and drag-to-fire, host settings, and both maps. `node scripts/multiplayer-pickup-check.mjs` starts its own isolated backend and checks weapon changes, health, armor, and small-phone HUD layout. Set `NEON_URL` to the frontend URL and `NEON_BROWSER` if Chromium is installed outside Playwright's default location.
 
 ## Interview explanation
 
