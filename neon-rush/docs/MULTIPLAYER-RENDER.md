@@ -6,11 +6,11 @@ The existing site is **https://neon-rush-rsii.onrender.com**. Keep it as a Rende
 
 ## 1. Push the updated repository
 
-Include the frontend changes, the `neon-rush/server/` and `neon-rush/shared/` directories, and the root `render.yaml`. Commit `server/package-lock.json`; keep `node_modules`, `.env`, and `.npm-cache` out of Git.
+Include the frontend changes and the `neon-rush/server/` and `neon-rush/shared/` directories. Commit `server/package-lock.json`; keep `node_modules`, `.env`, and `.npm-cache` out of Git. This guide uses manual service configuration in the Render dashboard.
 
 ## 2. Create the arena Web Service
 
-Connect the repository to a new Render Blueprint using the included [render.yaml](../../render.yaml), or create one **Web Service** manually with these settings:
+In the Render dashboard, choose **New → Web Service**, connect this repository, and configure the service manually with these settings:
 
 | Setting | Value |
 | --- | --- |
@@ -24,9 +24,7 @@ Connect the repository to a new Render Blueprint using the included [render.yaml
 | `NODE_ENV` | `production` |
 | `ALLOWED_ORIGINS` | `https://neon-rush-rsii.onrender.com` |
 
-The root directory must include both `server/` and `shared/`. The service listens on Render's `PORT` and binds to `0.0.0.0`. The origin value has **no trailing slash**. Additional site origins can be comma-separated if you later add a custom domain. The Blueprint creates only the backend; it does not replace the existing Static Site. [Render Blueprint reference](https://render.com/docs/blueprint-spec).
-
-The Blueprint selects the free plan to avoid creating a paid resource. Free services can sleep when idle and take time to wake; pick an always-on plan in Render if that delay is unsuitable for your production players. [Render free-service limitations](https://render.com/docs/free).
+The root directory must include both `server/` and `shared/`. The service listens on Render's `PORT` and binds to `0.0.0.0`. The origin value has **no trailing slash**. Additional site origins can be comma-separated if you later add a custom domain. Create this backend alongside the existing Static Site. Choose the service plan explicitly in the dashboard before deploying.
 
 ## 3. Connect the existing Static Site
 
@@ -58,7 +56,7 @@ Without this value, the production game shows that the online arena is unavailab
 | Fire | Hold left mouse button or F | Hold/drag right pad |
 | Dash | Space / Shift while moving | Dash while moving |
 | Reload | R or Reload button | Reload button |
-| Voice chat | Enable Mic, then hold V | Enable Mic, then hold TALK |
+| Voice chat | Enable Mic for open-mic conversation; hold V while muted | Enable Mic for open-mic conversation; hold TALK while muted |
 | Mute / deafen | MIC MUTED / HEARING buttons | Same buttons in the voice dock |
 | Text chat | Type in Room Chat, Enter to send | Same Room Chat field |
 
