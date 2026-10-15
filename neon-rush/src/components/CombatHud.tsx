@@ -5,6 +5,7 @@ import type { Snapshot } from '../game/engine';
 import { inCombat } from '../game/combat';
 import { getLevel } from '../game/levels';
 import { weaponById } from '../game/weapons';
+import type { TouchScheme } from '../game/touchScheme';
 import { BossHealthBar } from './BossHealthBar';
 
 function LiveFeedback({ active }: { active: boolean }) {
@@ -29,14 +30,14 @@ function LiveFeedback({ active }: { active: boolean }) {
   return <><div ref={damage} className="damage-vignette" />{active && <><div ref={cursor} className="combat-reticle" aria-hidden="true"><i /><i /><i /><i /><span /></div><div ref={hit} className="critical-feedback">CRITICAL HIT</div></>}</>;
 }
 
-function MobileCombat() {
+function MobileCombat({ scheme }: { scheme: TouchScheme }) {
   const pad = useRef<HTMLDivElement>(null);
   const updateAim = (x: number, y: number) => {
     const bounds = pad.current?.getBoundingClientRect(); if (!bounds) return;
     game.combat.aimStick = { x: Math.max(-1, Math.min(1, (x - bounds.left - bounds.width / 2) / (bounds.width / 2))), y: Math.max(-1, Math.min(1, (y - bounds.top - bounds.height / 2) / (bounds.height / 2))) };
   };
   return <div className="mobile-combat" aria-label="Mobile combat controls">
-    <div className="mobile-move">{([['left', ArrowLeft, 'Move left'], ['right', ArrowRight, 'Move right'], ['jump', ArrowUp, 'Jump'], ['slide', ArrowDown, 'Slide']] as const).map(([action, Icon, label]) => <button key={action} aria-label={label} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); game.act(action); }}><Icon size={20} /></button>)}<button className="cover-control" aria-label="Hold for cover" onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); game.cover(true); }} onPointerUp={() => game.cover(false)} onPointerCancel={() => game.cover(false)}><Shield size={15} />COVER</button></div>
+    {scheme !== 'swipes' ? <div className="mobile-move">{([['left', ArrowLeft, 'Move left'], ['right', ArrowRight, 'Move right'], ['jump', ArrowUp, 'Jump'], ['slide', ArrowDown, 'Slide']] as const).map(([action, Icon, label]) => <button key={action} aria-label={label} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); game.act(action); }}><Icon size={20} /></button>)}<button className="cover-control" aria-label="Hold for cover" onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); game.cover(true); }} onPointerUp={() => game.cover(false)} onPointerCancel={() => game.cover(false)}><Shield size={15} />COVER</button></div> : <button className="cover-control swipe-cover" aria-label="Hold for cover" onPointerDown={event => { event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); game.cover(true); }} onPointerUp={() => game.cover(false)} onPointerCancel={() => game.cover(false)}><Shield size={15} />COVER</button>}
     <div className="mobile-aim-pad" ref={pad} role="slider" aria-label="Aim control" aria-valuemin={-100} aria-valuemax={100} aria-valuenow={0} tabIndex={0}
       onPointerDown={event => { event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); updateAim(event.clientX, event.clientY); }}
       onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) { event.stopPropagation(); updateAim(event.clientX, event.clientY); } }}
@@ -46,7 +47,7 @@ function MobileCombat() {
   </div>;
 }
 
-export function CombatHud({ state }: { state: Snapshot }) {
+export function CombatHud({ state, touchScheme = 'both' }: { state: Snapshot; touchScheme?: TouchScheme }) {
   const c = state.campaign, active = inCombat(state.phase), level = getLevel(c.levelId), weapon = weaponById(c.weapon);
   if (!c.active || ['menu', 'briefing', 'victory'].includes(state.phase)) return null;
   return <>
@@ -62,7 +63,8 @@ export function CombatHud({ state }: { state: Snapshot }) {
         {c.combo > 1 && <div className="combo-display"><strong>{c.multiplier}×</strong><span>{c.combo} COMBO</span></div>}
         {c.alert && <div className="combat-alert" role="status"><Crosshair size={14} />{c.alert}</div>}
         <div className="combat-key-hints">MOUSE AIM <span>·</span> HOLD CLICK FIRE <span>·</span> HOLD S COVER <span>·</span> SPACE JUMP</div>
-        <MobileCombat />
+        {touchScheme !== 'buttons' && <div className="swipe-hint" aria-hidden="true">SWIPE TO DODGE · TAP TO FIRE</div>}
+        <MobileCombat scheme={touchScheme} />
       </>}
     </>}
   </>;

@@ -3,8 +3,9 @@ import { game } from '../game/engine';
 import type { Snapshot } from '../game/engine';
 import { format } from './GameOverlay';
 import { inCombat } from '../game/combat';
+import type { TouchScheme } from '../game/touchScheme';
 
-export function Hud({ state }: { state: Snapshot }) {
+export function Hud({ state, touchScheme = 'both' }: { state: Snapshot; touchScheme?: TouchScheme }) {
   const active = state.phase !== 'menu';
   return <>
     <div className="stage-top">
@@ -18,7 +19,7 @@ export function Hud({ state }: { state: Snapshot }) {
       </div>
       {state.notice && <div className="game-notice" role="status"><Zap size={16} />{state.notice}</div>}
       <div className="run-telemetry"><div><Gauge size={16} /><strong>{Math.round(state.speed * 3.6)}</strong><span>KM/H</span></div><span>{format(state.distance)} m</span><span>LEVEL {state.level}</span><div className="level-progress"><i style={{ width: `${state.distance % 250 / 2.5}%` }} /></div></div>
-      <div className="touch-controls" aria-label="Touch game controls">{([['left', ArrowLeft, 'Left'], ['right', ArrowRight, 'Right'], ['jump', ArrowUp, 'Jump'], ['slide', ArrowDown, 'Slide']] as const).map(([action, Icon, label]) => <button key={action} aria-label={label} onPointerDown={event => { event.preventDefault(); game.act(action); }}><Icon size={22} /><span>{label}</span></button>)}</div>
+      {touchScheme !== 'swipes' && <div className="touch-controls" aria-label="Touch game controls">{([['left', ArrowLeft, 'Left'], ['right', ArrowRight, 'Right'], ['jump', ArrowUp, 'Jump'], ['slide', ArrowDown, 'Slide']] as const).map(([action, Icon, label]) => <button key={action} aria-label={label} onPointerDown={event => { event.preventDefault(); game.act(action); }}><Icon size={22} /><span>{label}</span></button>)}</div>}
     </>}
     {state.phase === 'menu' && <div className="scene-caption"><span className="coordinate">SECTOR 07 / 23:59</span><span className="scene-location">NIGHTFALL<br /><b>CIRCUIT</b></span><span className="scene-line" /><span className="scene-caption-small">THE STREETS ARE CALLING.</span></div>}
     <div className="stage-bottom"><span><i />{state.phase === 'menu' ? 'ALL SYSTEMS GO' : state.phase === 'paused' ? 'RUN ON STANDBY' : state.phase === 'over' ? 'CONNECTION ENDED' : 'RUNNER CONNECTED'}</span><span>NEON CITY <b>35.6895° N 139.6917° E</b></span></div>
