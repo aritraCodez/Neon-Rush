@@ -71,7 +71,8 @@ function VoiceDock({ voice, state, compact }: { voice: VoiceChat; state: VoiceSn
       <button aria-pressed={!state.deafened} aria-label={state.deafened ? 'Hear teammates' : 'Deafen voice chat'} onClick={() => voice.setDeafened(!state.deafened)}>{state.deafened ? <VolumeX size={15} /> : <Headphones size={15} />}{state.deafened ? 'DEAFEN' : 'HEARING'}</button>
       <button className={state.ptt ? 'is-live' : ''} aria-label="Hold to talk" onPointerDown={event => { event.preventDefault(); voice.setPtt(true); }} onPointerUp={() => voice.setPtt(false)} onPointerCancel={() => voice.setPtt(false)} onPointerLeave={() => voice.setPtt(false)}>TALK</button>
     </>}
-    <small>{state.error || (state.live ? (state.muted ? 'Muted — hold V or TALK' : 'Voice live with this room') : 'Talk with everyone in this room')}</small>
+    {state.playbackBlocked && <button onClick={voice.resumePlayback}><Volume2 size={15} />HEAR PLAYERS</button>}
+    <small>{state.error || (state.playbackBlocked ? 'Tap HEAR PLAYERS to enable voice audio' : state.live ? (state.muted ? 'Muted — hold V or TALK' : 'Open mic — talk and listen together') : 'Enable your mic to talk and listen with everyone')}</small>
   </div>;
 }
 
