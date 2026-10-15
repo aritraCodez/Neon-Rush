@@ -59,6 +59,7 @@ export class ArenaClient {
   private uiTimer: ReturnType<typeof setTimeout> | undefined;
   private inputTimer: ReturnType<typeof setInterval> | undefined;
   private lastInputSend = 0;
+  private lastFire = false;
   private inputRate = Math.max(10, Math.min(60, Number(import.meta.env.VITE_ARENA_INPUT_RATE) || 30));
   private publishRoom() {
     clearTimeout(this.uiTimer); this.uiTimer = undefined; this.lastUi = performance.now();
@@ -74,9 +75,9 @@ export class ArenaClient {
   frame(dt: number, input: ArenaInput) {
     if (this.state.status === 'connected') {
       this.simulation.advance(dt, input);
-      // Some browsers deprioritize timers while a WebGL frame is rendering.
-      // The same rate-limited sender can also be serviced by the input frame.
-      this.flushInputs();
+      const edge = input.fire && !this.lastFire;
+      this.lastFire = input.fire;
+      this.flushInputs(edge);
     }
   }
   rendered() {
@@ -92,10 +93,10 @@ export class ArenaClient {
     this.correctionsAt = this.simulation.correctionCount; this.measuredAt = now;
     this.counts = { frames: 0, snapshots: 0, inputs: 0, bytesIn: 0, bytesOut: 0 };
   }
-  private flushInputs = () => {
+  private flushInputs = (urgent = false) => {
     if (this.state.status !== 'connected' || this.simulation.room?.phase !== 'playing') return;
     const now = performance.now();
-    if (now - this.lastInputSend < 1000 / this.inputRate) return;
+    if (!urgent && now - this.lastInputSend < 1000 / this.inputRate) return;
     if (this.simulation.pending.length >= 120) { this.socket?.close(4001, 'Input acknowledgement timed out'); return; }
     const inputs = this.simulation.batch();
     if (inputs.length && this.send({ type: 'input', round: this.simulation.room.round, inputs }, true)) {

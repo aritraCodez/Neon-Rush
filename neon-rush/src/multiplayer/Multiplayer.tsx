@@ -145,6 +145,16 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   useEffect(() => { if (chatOpen) setChatSeen(connection.chat.length); }, [chatOpen, connection.chat.length]);
   useEffect(() => {
     if (!chatOpen) return;
+    const close = (event: PointerEvent) => {
+      const node = event.target as HTMLElement | null;
+      if (node?.closest('.arena-chat-pop, .arena-comm')) return;
+      setChatOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [chatOpen]);
+  useEffect(() => {
+    if (!chatOpen || !touchDevice) return;
     const root = document.documentElement;
     const pin = () => {
       window.scrollTo(0, 0);
@@ -167,7 +177,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
       root.style.removeProperty('--nr-vv-top');
       window.scrollTo(0, 0);
     };
-  }, [chatOpen]);
+  }, [chatOpen, touchDevice]);
   useEffect(() => {
     if (room?.phase === 'lobby' || !room) { setExpanded(false); setDisplayNote(''); }
     if (room?.phase === 'countdown' && touchDevice) stage.current?.scrollIntoView({ block: 'start' });
@@ -213,6 +223,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
     <button className={`icon-button arena-comm ${micOn ? 'is-live' : ''} ${voiceState.talking.local ? 'is-talking' : ''}`} aria-label={!voiceState.live ? 'Enable microphone' : micOn ? 'Mute microphone' : 'Unmute microphone'} aria-pressed={micOn} onClick={toggleVoice}>{micOn ? <Mic size={18} /> : <MicOff size={18} />}</button>
     <button className={`icon-button arena-comm ${chatOpen ? 'is-live' : ''}`} aria-label="Room chat" aria-expanded={chatOpen} onClick={toggleChat}><MessageSquare size={18} />{unread > 0 && !chatOpen && <b>{unread > 9 ? '9+' : unread}</b>}</button>
   </> : null;
+  const chatPop = chatOpen && room ? <div className="arena-chat-pop" role="dialog" aria-label="Room chat" onPointerDown={event => event.stopPropagation()}><div className="arena-chat-pop-head"><span>ROOM CHAT</span><button className="icon-button" aria-label="Close chat" onClick={() => setChatOpen(false)}><X size={16} /></button></div><ChatPanel client={client} messages={connection.chat} playerId={playerId} compact disabled={!connected} /></div> : null;
 
   return <div className={`app multiplayer-app ${touchDevice ? 'arena-touch' : ''}`}>
     <NetworkDiagnostics client={client} />
@@ -223,7 +234,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
     <main>
       <div className="arena-topline"><span><Radio size={13} /> PLAYER VS PLAYER</span><span>{room ? `ROOM ${room.code} / ROUND ${room.round || 1}` : 'HOST-SET ROOMS / FREE FOR ALL'}</span></div>
       {connection.error && <div className="arena-error" role="alert">{connection.error}{status === 'offline' && <button onClick={client.connect}>Reconnect</button>}</div>}
-      {chatOpen && room && <div className="arena-chat-pop" role="dialog" aria-label="Room chat"><div className="arena-chat-pop-head"><span>ROOM CHAT</span><button className="icon-button" aria-label="Close chat" onClick={() => setChatOpen(false)}><X size={16} /></button></div><ChatPanel client={client} messages={connection.chat} playerId={playerId} compact disabled={!connected} /></div>}
+      {inLobby && chatPop}
       {inLobby ? <div className="arena-lobby">
         <section className="arena-lobby-intro"><div className="eyebrow"><span className="tiny-line" /> NO BOTS. REAL RIVALS.</div><h1>MEET IN<br /><span>THE ARENA.</span></h1><p>Bring your name.<br />Leave with the high score.</p><div className="arena-rule-chips"><span><Users size={15} />2-{ARENA.maxPlayers} players</span><span><Trophy size={15} />First to 10</span><span><Zap size={15} />3-minute rounds</span></div>
           <div className="arena-map-preview" aria-hidden="true"><div className="map-grid" />{map.cover.map((box, index) => <i key={index} style={{ left: `${(box.x / map.width + 0.5) * 100}%`, top: `${(box.z / map.depth + 0.5) * 100}%`, width: `${box.width / map.width * 100}%`, height: `${box.depth / map.depth * 100}%` }} />)}<span className="map-player a" /><span className="map-player b" /><span className="map-player c" /><b>{map.name.toUpperCase()} / ARENA</b></div>
@@ -255,6 +266,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
         </section>
       </div> : <div className="arena-match-layout">
         <section ref={stage} className={`arena-stage ${expanded ? 'arena-expanded' : ''}`} aria-label="Live multiplayer arena">
+          {!inLobby && chatPop}
           <div className="arena-canvas"><ArenaScene client={client} room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
           <div className="arena-match-top"><span><i /> {map.name.toUpperCase()}</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls">{comms}<button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
           {displayNote && expanded && <div className="arena-display-note" role="status">{displayNote}</div>}
