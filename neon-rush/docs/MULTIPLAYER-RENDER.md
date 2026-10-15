@@ -2,7 +2,7 @@
 
 Deploy the updated backend before the frontend: the new frontend uses protocol 2 sequenced input batches and delta snapshots. The backend still accepts legacy clients. See the [performance guide](MULTIPLAYER-PERFORMANCE.md#configuration-and-diagnostics) for rate configuration and diagnostics.
 
-The existing site is **https://neon-rush-rsii.onrender.com**. Keep it as a Render Static Site. Multiplayer uses a separate Node Web Service for WebSockets; Render routes public WebSockets through its Web Services using `wss://`. [Render WebSocket documentation](https://render.com/docs/websocket).
+Keep the frontend as a Render Static Site. Multiplayer uses a separate Node Web Service for WebSockets; Render routes public WebSockets through its Web Services using `wss://`. [Render WebSocket documentation](https://render.com/docs/websocket).
 
 ## 1. Push the updated repository
 
@@ -22,7 +22,7 @@ In the Render dashboard, choose **New → Web Service**, connect this repository
 | Health Check Path | `/health` |
 | `NODE_VERSION` | `22` |
 | `NODE_ENV` | `production` |
-| `ALLOWED_ORIGINS` | `https://neon-rush-rsii.onrender.com` |
+| `ALLOWED_ORIGINS` | Your frontend origin, e.g. `https://YOUR-FRONTEND.onrender.com` |
 
 The root directory must include both `server/` and `shared/`. The service listens on Render's `PORT` and binds to `0.0.0.0`. The origin value has **no trailing slash**. Additional site origins can be comma-separated if you later add a custom domain. Create this backend alongside the existing Static Site. Choose the service plan explicitly in the dashboard before deploying.
 
