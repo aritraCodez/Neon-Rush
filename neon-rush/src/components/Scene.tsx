@@ -15,6 +15,50 @@ import { GraphicsLifecycle } from './GraphicsLifecycle';
 
 const CYAN = '#46eeff';
 const PINK = '#ff2a9b';
+const menuPan = { x: 0, y: 0, tx: 0, ty: 0 };
+
+function MenuLook() {
+  const { gl } = useThree();
+  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const down = (event: PointerEvent) => {
+      if (game.phase !== 'menu' || event.button > 0) return;
+      event.preventDefault();
+      drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      canvas.setPointerCapture(event.pointerId);
+      canvas.style.cursor = 'grabbing';
+    };
+    const move = (event: PointerEvent) => {
+      const start = drag.current; if (!start || start.id !== event.pointerId || game.phase !== 'menu') return;
+      menuPan.tx = THREE.MathUtils.clamp(menuPan.tx - (event.clientX - start.x) * 0.018, -7.5, 7.5);
+      menuPan.ty = THREE.MathUtils.clamp(menuPan.ty + (event.clientY - start.y) * 0.01, -2.2, 2.4);
+      start.x = event.clientX; start.y = event.clientY;
+    };
+    const up = (event: PointerEvent) => {
+      if (drag.current?.id !== event.pointerId) return;
+      drag.current = null; canvas.style.cursor = 'grab';
+    };
+    canvas.style.cursor = 'grab';
+    canvas.addEventListener('pointerdown', down, { passive: false });
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    return () => {
+      canvas.removeEventListener('pointerdown', down);
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', up);
+      canvas.removeEventListener('pointercancel', up);
+      canvas.style.cursor = '';
+    };
+  }, [gl]);
+  useFrame((_, dt) => {
+    if (game.phase !== 'menu') { menuPan.tx = 0; menuPan.ty = 0; }
+    menuPan.x = THREE.MathUtils.damp(menuPan.x, menuPan.tx, 8, dt);
+    menuPan.y = THREE.MathUtils.damp(menuPan.y, menuPan.ty, 8, dt);
+  });
+  return null;
+}
 
 function Simulation() {
   const { camera, size } = useThree();
@@ -23,9 +67,9 @@ function Simulation() {
     game.update(dt);
     const menu = game.phase === 'menu';
     const arena = game.arena && !menu;
-    const targetX = menu ? (size.width < 600 ? -1.2 : -5.6) : arena ? game.x * 0.4 + (size.width < 600 ? 0.5 : 1.35) : game.x * 0.11;
+    const targetX = menu ? (size.width < 600 ? -1.2 : -5.6) + menuPan.x : arena ? game.x * 0.4 + (size.width < 600 ? 0.5 : 1.35) : game.x * 0.11;
     camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 3, dt);
-    camera.position.y = THREE.MathUtils.damp(camera.position.y, menu ? 5.2 : arena ? 3.9 : 4.6, 3, dt);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, (menu ? 5.2 : arena ? 3.9 : 4.6) + (menu ? menuPan.y : 0), 3, dt);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, arena ? 8.2 : 11, 3, dt);
     look.x = THREE.MathUtils.damp(look.x, arena ? 0 : camera.position.x * 0.78, 3, dt);
     look.y = THREE.MathUtils.damp(look.y, arena ? 1.8 : 1.7, 3, dt);
@@ -203,7 +247,7 @@ function World({ highQuality, levelId, runnerStyle }: { highQuality: boolean; le
     <directionalLight position={[6, 12, 4]} intensity={2.1} color="#e7f3ff" />
     <directionalLight position={[-7, 3, -6]} intensity={1.55} color="#ff4fb8" />
     <pointLight position={[0, 6, -22]} color={PINK} intensity={70} distance={55} />
-    <Simulation /><Sky /><City /><District levelId={levelId} /><Track />
+    <Simulation /><MenuLook /><Sky /><City /><District levelId={levelId} /><Track />
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.16, -60]}><planeGeometry args={[240, 240]} /><meshStandardMaterial color="#282333" metalness={0.7} roughness={0.32} /></mesh>
     <CombatScene levelId={levelId} />
     {kinds.map(kind => <EntityBatch key={kind} kind={kind} />)}
