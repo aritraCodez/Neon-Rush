@@ -2,8 +2,6 @@
  
 A 3D action game built with React 19, TypeScript, Vite, React Three Fiber, and Three.js. Solo gameplay and Runner Lab render procedural models locally without external game assets or a backend. Online PvP uses the included Node WebSocket server.
 
-![Neon Rush game preview](<img width="866" height="422" alt="image" src="https://github.com/user-attachments/assets/6ecc3a40-92a9-44f0-b3eb-c2091458f265" />
-)
 ## Run locally
 
 Use Node.js 22.15 or newer.
