@@ -79,10 +79,10 @@ function ChatPanel({ client, messages, playerId, compact, disabled }: { client: 
   const log = useRef<HTMLUListElement>(null);
   useEffect(() => { log.current?.scrollTo(0, log.current.scrollHeight); }, [messages.length]);
   return <div className={`arena-chat ${compact ? 'compact' : ''}`}>
-    <span>ROOM CHAT</span>
+    {!compact && <span>ROOM CHAT</span>}
     <ul ref={log} aria-live="polite">{messages.length ? messages.map(message => <li key={message.id} className={message.from === playerId ? 'self' : ''}><b style={{ color: message.color }}>{message.name}</b><span>{message.text}</span></li>) : <li className="empty">No messages yet. Say hello.</li>}</ul>
     <form onSubmit={event => { event.preventDefault(); const text = draft.trim(); if (!text || disabled) return; client.chat(text); setDraft(''); }}>
-      <input aria-label="Chat message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={80} placeholder={disabled ? 'Reconnect to chat' : 'Message the room'} disabled={disabled} autoComplete="off" />
+      <input aria-label="Chat message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={80} placeholder={disabled ? 'Reconnect to chat' : 'Message the room'} disabled={disabled} autoComplete="off" enterKeyHint="send" inputMode="text" style={{ fontSize: 16 }} />
       <button type="submit" aria-label="Send chat" disabled={disabled || !draft.trim()}><Send size={14} /></button>
     </form>
   </div>;
@@ -143,6 +143,31 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
     return () => clearTimeout(hide);
   }, [displayNote]);
   useEffect(() => { if (chatOpen) setChatSeen(connection.chat.length); }, [chatOpen, connection.chat.length]);
+  useEffect(() => {
+    if (!chatOpen) return;
+    const root = document.documentElement;
+    const pin = () => {
+      window.scrollTo(0, 0);
+      const view = window.visualViewport;
+      const keyboard = view ? Math.max(0, window.innerHeight - view.height - view.offsetTop) : 0;
+      root.style.setProperty('--nr-keyboard', `${keyboard}px`);
+      root.style.setProperty('--nr-vv-top', `${view?.offsetTop ?? 0}px`);
+    };
+    root.classList.add('nr-chat-open');
+    pin();
+    window.visualViewport?.addEventListener('resize', pin);
+    window.visualViewport?.addEventListener('scroll', pin);
+    window.addEventListener('focusin', pin);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', pin);
+      window.visualViewport?.removeEventListener('scroll', pin);
+      window.removeEventListener('focusin', pin);
+      root.classList.remove('nr-chat-open');
+      root.style.removeProperty('--nr-keyboard');
+      root.style.removeProperty('--nr-vv-top');
+      window.scrollTo(0, 0);
+    };
+  }, [chatOpen]);
   useEffect(() => {
     if (room?.phase === 'lobby' || !room) { setExpanded(false); setDisplayNote(''); }
     if (room?.phase === 'countdown' && touchDevice) stage.current?.scrollIntoView({ block: 'start' });
