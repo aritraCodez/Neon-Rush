@@ -31,6 +31,49 @@ async function connect(port, origin = 'https://neon-rush-rsii.onrender.com') {
     });
   } };
 }
+test('host settings synchronize, reject guests and enforce capacity for twelve real sockets', { timeout: 15000 }, async t => {
+  const server = await startArenaServer({ port: 0, allowedOrigins: ['https://neon-rush-rsii.onrender.com'] });
+  t.after(() => server.close());
+  const peers = await Promise.all(Array.from({ length: 13 }, () => connect(server.port)));
+  const host = peers[0];
+  host.send({ type: 'create', name: 'Host', capacity: 2, mapId: 'foundry' });
+  const session = await host.next('session');
+  peers[1].send({ type: 'join', code: session.code, name: 'Guest1' });
+  await peers[1].next('session');
+  peers[2].send({ type: 'join', code: session.code, name: 'Guest2' });
+  assert.match((await peers[2].next('error')).message, /full/);
+  peers[1].send({ type: 'settings', capacity: 12, mapId: 'exchange' });
+  assert.match((await peers[1].next('error')).message, /host/);
+  host.send({ type: 'ready', ready: true });
+  await host.next('state', m => m.room.players.some(p => p.ready));
+  host.send({ type: 'settings', capacity: 12, mapId: 'foundry' });
+  const changed = await peers[1].next('state', m => m.room.capacity === 12);
+  assert.equal(changed.room.mapId, 'foundry');
+  assert.ok(changed.room.players.every(p => !p.ready));
+  for (let i = 2; i < 12; i++) {
+    peers[i].send({ type: 'join', code: session.code, name: `Guest${i}` });
+    await peers[i].next('session');
+  }
+  peers[12].send({ type: 'join', code: session.code, name: 'Overflow' });
+  assert.match((await peers[12].next('error')).message, /full/);
+  host.send({ type: 'settings', capacity: 11 });
+  assert.match((await host.next('error')).message, /roster/);
+  peers.slice(0, 12).forEach(peer => peer.send({ type: 'ready', ready: true }));
+  await host.next('state', m => m.room.players.length === 12 && m.room.players.every(p => p.ready));
+  host.send({ type: 'start' });
+  await host.next('state', m => m.room.phase === 'countdown');
+  host.send({ type: 'settings', capacity: 12, mapId: 'exchange' });
+  assert.match((await host.next('error')).message, /lobby/);
+  const room = server.rooms.get(session.code);
+  room.phaseUntil = Date.now() - 1;
+  await peers[11].next('state', m => m.room.phase === 'playing');
+  const shooter = room.players.get(session.id), pickup = room.pickups.find(p => p.kind === 'pulse');
+  Object.assign(shooter, { x: pickup.x, z: pickup.z });
+  const received = await peers[11].next('state', m => m.room.players.find(p => p.id === session.id).weapon === 'pulse');
+  assert.equal(received.room.players.find(p => p.id === session.id).ammo, 32);
+  assert.ok(received.room.pickups.find(p => p.id === pickup.id).availableIn > 0);
+});
+
 test('two real WebSockets create, join, synchronize, resume, migrate host, and clean rooms', { timeout: 15000 }, async t => {
   const server = await startArenaServer({ port: 0, allowedOrigins: ['https://neon-rush-rsii.onrender.com'], reconnectGrace: 1000 });
   t.after(() => server.close());

@@ -212,10 +212,10 @@ export class ArenaClient {
   }
   setMuted(muted: boolean) { this.send({ type: 'voice-state', muted }); }
   chat(text: string) { return this.send({ type: 'chat', text }); }
-  join(name: string, style: string, code?: string) {
+  join(name: string, style: string, code?: string, settings?: { capacity: number; mapId: string }) {
     if (this.state.status !== 'connected' || this.state.pending) return;
     this.patch({ pending: true, error: '' });
-    if (!this.send({ type: code ? 'join' : 'create', protocol: 2, name, style, code })) { this.clearPending(); return; }
+    if (!this.send({ type: code ? 'join' : 'create', protocol: 2, name, style, code, ...(code ? {} : settings) })) { this.clearPending(); return; }
     this.pendingTimeout = setTimeout(() => { this.clearPending(); this.patch({ error: 'The server did not respond. Please try again.' }); }, 8000);
   }
   input(value: ArenaInput) { this.frame(1 / 60, value); this.flushInputs(); }

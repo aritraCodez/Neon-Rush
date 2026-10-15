@@ -104,7 +104,7 @@ export async function startArenaServer({
           let room;
           if (message.type === 'create') {
             if (rooms.size >= maxRooms) throw new Error('The arena is full right now. Please try again shortly.');
-            let code; do { code = roomCode(); } while (rooms.has(code)); room = new ArenaRoom(code); room.tickRate = tickRate; room.snapshotRate = snapshotRate;
+            let code; do { code = roomCode(); } while (rooms.has(code)); room = new ArenaRoom(code, Date.now, { capacity: message.capacity ?? 6, mapId: message.mapId ?? 'exchange' }); room.tickRate = tickRate; room.snapshotRate = snapshotRate;
           } else {
             const code = typeof message.code === 'string' ? message.code.trim().toUpperCase() : '';
             room = rooms.get(code); if (!room) throw new Error('Room not found. Check the six-character code.');
@@ -123,6 +123,7 @@ export async function startArenaServer({
             else room.setInput(session.id, message.input);
             break;
           case 'resync': snapshot(session); break;
+          case 'settings': room.configure(session.id, { capacity: message.capacity, mapId: message.mapId }); break;
           case 'ready': room.ready(session.id, message.ready); break;
           case 'start': room.start(session.id); break;
           case 'lobby': room.lobby(session.id); break;

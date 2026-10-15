@@ -1,3 +1,4 @@
+import { arenaMap } from '../../shared/arena.js';
 import { INPUT_DT, movePlayer, sanitizeInput } from '../../shared/movement.js';
 import type { ArenaCommand, ArenaInput, ArenaPlayer, ArenaSnapshot } from '../../shared/multiplayer';
 
@@ -32,7 +33,7 @@ export class ArenaSimulation {
       this.jitter += (deviation - this.jitter) * 0.1;
     }
     const own = room.players.find(p => p.id === playerId);
-    const discontinuity = !this.room || this.room.code !== room.code || this.room.round !== room.round ||
+    const discontinuity = !this.room || this.room.code !== room.code || this.room.round !== room.round || this.room.mapId !== room.mapId ||
       this.room.phase !== room.phase || this.predicted?.deaths !== own?.deaths ||
       (this.predicted?.hp === 0) !== (own?.hp === 0);
     if (discontinuity) { this.history = []; this.renderTime = 0; this.offsetX = 0; this.offsetZ = 0; this.accumulator = 0; }
@@ -48,7 +49,7 @@ export class ArenaSimulation {
     this.pending = this.pending.filter(command => command.seq > own.ack);
     const before = this.predicted;
     const corrected = { ...own };
-    if (room.phase === 'playing' && own.hp > 0) for (const command of this.pending) movePlayer(corrected, command);
+    if (room.phase === 'playing' && own.hp > 0) for (const command of this.pending) movePlayer(corrected, command, INPUT_DT, arenaMap(room.mapId));
     if (before && !discontinuity) {
       const dx = before.x - corrected.x, dz = before.z - corrected.z;
       const error = Math.hypot(dx, dz);
@@ -73,7 +74,7 @@ export class ArenaSimulation {
     while (this.accumulator + 1e-9 >= INPUT_DT && this.pending.length < 120) {
       const command = { ...input, seq: ++this.sequence, dash: this.dash, reload: this.reload };
       this.dash = false; this.reload = false;
-      this.pending.push(command); movePlayer(this.predicted, command);
+      this.pending.push(command); movePlayer(this.predicted, command, INPUT_DT, arenaMap(this.room.mapId));
       this.accumulator -= INPUT_DT;
     }
     this.accumulator = Math.min(this.accumulator, INPUT_DT);
@@ -118,7 +119,7 @@ export class ArenaSimulation {
           const speed = 7 * (a.dashing ? 2.8 : 1);
           const input = { dx: (a.x - p.x) / elapsed / speed, dz: (a.z - p.z) / elapsed / speed, aimX: a.x - Math.sin(a.angle) * 30, aimZ: a.z - Math.cos(a.angle) * 30, fire: false };
           let remaining = Math.min(0.08, (time - left.room.serverTime) / 1000);
-          while (remaining > 1e-6) { const dt = Math.min(INPUT_DT, remaining); movePlayer(out, input, dt); remaining -= dt; }
+          while (remaining > 1e-6) { const dt = Math.min(INPUT_DT, remaining); movePlayer(out, input, dt, arenaMap(left.room.mapId)); remaining -= dt; }
         }
       }
     }

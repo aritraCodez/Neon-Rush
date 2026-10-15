@@ -18,7 +18,9 @@ Open the local URL Vite prints (default `http://127.0.0.1:5173`). Solo campaign 
 
 ## Multiplayer
 
-For 2-6 players: room codes, ready/start lobby, live combat, text chat, and two-way voice. Open **Multiplayer Arena**, create or join a room, and share the code. Everyone readies up before the host starts. Each player can enable their microphone for open-mic conversation; while muted, hold **V** or **TALK**. Tap **HEAR PLAYERS** if browser autoplay blocks voice.
+For 2-12 players: room codes, ready/start lobby, live combat, text chat, and two-way voice. Hosts use **+ / −** to set the player limit (including themselves) and choose **The Exchange** or **Orbital Foundry**. Walk over glowing stations for pulse, shotgun, rail blaster, health, or armor pickups. On Android, the left pad only moves; drag the right pad to aim and fire, then release to stop.
+
+Open **Multiplayer Arena**, create or join a room, and share the code. Everyone readies up before the host starts. Each player can enable their microphone for open-mic conversation; while muted, hold **V** or **TALK**. Tap **HEAR PLAYERS** if browser autoplay blocks voice.
 
 With the frontend running from the quick-start above, start the backend in a second terminal from `neon-rush/`:
 
@@ -50,9 +52,7 @@ flowchart LR
 
 ## Interactive 3D Runner Lab
 
-Use **Enter Runner Lab** below the game to rotate and zoom the articulated character, choose one of four armor finishes, preview every weapon, inspect its wireframe, and play Idle, Run, Jump, or Aim animations. Armor changes carry into gameplay and are saved locally. Opening the lab pauses an active run.
-
-**Export 3D Model** downloads the selected character and four animations as a GLB. See the [Blender and Unreal workflow](neon-rush/docs/3D-WORKFLOW.md) for editing and import guidance. No native editor installation is needed to play or use the lab.
+Use **Enter Runner Lab** below the game to rotate and zoom the articulated character, choose one of four armor finishes, preview every weapon, inspect its wireframe, and play Idle, Run, Jump, or Aim animations. Armor changes carry into gameplay and are saved locally. Opening the lab pauses an active run. The built-in character is permanent; armor and weapon previews customize its appearance.
 
 ## Gameplay controls
 

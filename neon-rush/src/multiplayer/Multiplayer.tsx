@@ -8,7 +8,7 @@ import { useArenaControls } from './useArenaControls';
 import { useVoiceChat, type VoiceChat, type VoiceSnapshot } from './voice';
 import type { ArenaControls } from './useArenaControls';
 import type { ArenaChat, ArenaPlayer } from '../../shared/multiplayer';
-import { ARENA, ARENA_COVER } from '../../shared/arena.js';
+import { ARENA, ARENA_MAPS, arenaMap, arenaWeapon } from '../../shared/arena.js';
 import type { RunnerStyle } from '../game/runnerStyle';
 import { audio } from '../game/audio';
 import './multiplayer.css';
@@ -20,16 +20,19 @@ const timeLabel = (seconds: number) => { const rounded = Math.max(0, Math.ceil(s
 function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls: RefObject<ArenaControls>; disabled: boolean }) {
   const knob = useRef<HTMLSpanElement>(null);
   const pointer = useRef<number | null>(null);
+  const start = useRef({ x: 0, y: 0 });
   function set(x: number, z: number) {
     const magnitude = Math.hypot(x, z), scale = Math.max(1, magnitude); x /= scale; z /= scale;
     if (magnitude < 0.12) { x = 0; z = 0; }
     if (knob.current) knob.current.style.transform = `translate(${x * 23}px,${z * 23}px)`;
     if (kind === 'move') controls.current.move = { x, z };
-    else { controls.current.touchAim = true; if (magnitude > 0.1) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) }; controls.current.firing = magnitude >= 0.12; }
+    else { controls.current.touchAim = true; if (magnitude > 0.1) controls.current.aimDirection = { x: x / Math.max(0.01, Math.hypot(x, z)), z: z / Math.max(0.01, Math.hypot(x, z)) }; controls.current.touchFiring = magnitude >= 0.18; }
   }
   const update = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    set((event.clientX - rect.left - rect.width / 2) / (rect.width * 0.38), (event.clientY - rect.top - rect.height / 2) / (rect.height * 0.38));
+    const x = kind === 'aim' ? event.clientX - start.current.x : event.clientX - rect.left - rect.width / 2;
+    const y = kind === 'aim' ? event.clientY - start.current.y : event.clientY - rect.top - rect.height / 2;
+    set(x / (rect.width * 0.38), y / (rect.height * 0.38));
   };
   const reset = () => { pointer.current = null; set(0, 0); };
   useEffect(() => { if (disabled) reset(); }, [disabled]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -40,12 +43,23 @@ function TouchPad({ kind, controls, disabled }: { kind: 'move' | 'aim'; controls
     return () => { window.removeEventListener('blur', reset); window.removeEventListener('resize', reset); document.removeEventListener('visibilitychange', hidden); reset(); };
   }, []); // Controls ref is stable for the mounted pad.
   return <div className={`arena-stick ${kind}`} role="group" tabIndex={disabled ? -1 : 0} aria-label={kind === 'move' ? 'Move runner with pad or arrow keys' : 'Aim and fire with pad or arrow keys'} aria-disabled={disabled}
-    onPointerDown={event => { if (disabled || pointer.current !== null) return; event.preventDefault(); event.stopPropagation(); pointer.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); update(event); }}
+    onPointerDown={event => { if (disabled || pointer.current !== null) return; event.preventDefault(); event.stopPropagation(); pointer.current = event.pointerId; start.current = { x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); update(event); }}
     onPointerMove={event => { if (pointer.current === event.pointerId && !disabled) { event.stopPropagation(); update(event); } }}
     onPointerUp={event => { if (pointer.current === event.pointerId) { event.stopPropagation(); reset(); } }} onPointerCancel={event => { if (pointer.current === event.pointerId) reset(); }} onLostPointerCapture={event => { if (pointer.current === event.pointerId) reset(); }} onBlur={() => { if (pointer.current === null) reset(); }}
     onKeyDown={event => { if (disabled || !event.key.startsWith('Arrow')) return; event.preventDefault(); set(event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0, event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0); }}
     onKeyUp={event => { if (event.key.startsWith('Arrow')) { event.preventDefault(); reset(); } }}>
-    <i /><span ref={knob}>{kind === 'aim' ? <Crosshair size={23} /> : <span className="stick-cross">✥</span>}</span><small>{kind === 'move' ? 'MOVE' : 'AIM + FIRE'}</small>
+    <i /><span ref={knob}>{kind === 'aim' ? <Crosshair size={23} /> : <span className="stick-cross">✥</span>}</span><small>{kind === 'move' ? 'MOVE' : 'DRAG TO FIRE'}</small>
+  </div>;
+}
+
+function RoomOptions({ capacity, mapId, minimum = 2, disabled, onChange }: { capacity: number; mapId: string; minimum?: number; disabled: boolean; onChange: (settings: { capacity: number; mapId: string }) => void }) {
+  return <div className="arena-room-options">
+    <div className="arena-capacity"><span>PLAYER LIMIT <small>Includes the host</small></span><div>
+      <button type="button" aria-label="Decrease player limit" disabled={disabled || capacity <= Math.max(2, minimum)} onClick={() => onChange({ capacity: capacity - 1, mapId })}>-</button>
+      <output aria-label="Player limit" aria-live="polite">{capacity}</output>
+      <button type="button" aria-label="Increase player limit" disabled={disabled || capacity >= ARENA.maxPlayers} onClick={() => onChange({ capacity: capacity + 1, mapId })}>+</button>
+    </div></div>
+    <div className="arena-map-options" role="group" aria-label="Choose arena map">{ARENA_MAPS.map(map => <button type="button" key={map.id} aria-pressed={mapId === map.id} disabled={disabled} onClick={() => onChange({ capacity, mapId: map.id })}><strong>{map.name}</strong><small>{map.description}</small></button>)}</div>
   </div>;
 }
 
@@ -83,6 +97,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   const [name, setName] = useState(savedName);
   const [code, setCode] = useState(() => new URLSearchParams(location.search).get('room')?.toUpperCase().slice(0, 6) || '');
   const [joinMode, setJoinMode] = useState<'create' | 'join'>(() => code ? 'join' : 'create');
+  const [settings, setSettings] = useState({ capacity: 6, mapId: 'exchange' });
   const [copied, setCopied] = useState('');
   const [graphicsFailed, setGraphicsFailed] = useState(false);
   const [help, setHelp] = useState(false);
@@ -143,6 +158,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   const host = room?.hostId === playerId;
   const canStart = room && room.players.length >= ARENA.minPlayers && room.players.every(player => player.connected && player.ready);
   const connected = status === 'connected';
+  const map = arenaMap(room?.mapId ?? settings.mapId);
   const inLobby = !room || room.phase === 'lobby';
 
   return <div className={`app multiplayer-app ${touchDevice ? 'arena-touch' : ''}`}>
@@ -152,27 +168,29 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
       <div className="header-actions"><button className="icon-button" onClick={onSound} aria-label={sound ? 'Mute sound' : 'Enable sound'}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="arena-exit" onClick={leave}><ArrowLeft size={15} />SOLO MODE</button></div>
     </header>
     <main>
-      <div className="arena-topline"><span><Radio size={13} /> PLAYER VS PLAYER</span><span>{room ? `ROOM ${room.code} / ROUND ${room.round || 1}` : '2–6 PLAYERS / FREE FOR ALL'}</span></div>
+      <div className="arena-topline"><span><Radio size={13} /> PLAYER VS PLAYER</span><span>{room ? `ROOM ${room.code} / ROUND ${room.round || 1}` : 'HOST-SET ROOMS / FREE FOR ALL'}</span></div>
       {connection.error && <div className="arena-error" role="alert">{connection.error}{status === 'offline' && <button onClick={client.connect}>Reconnect</button>}</div>}
       {inLobby ? <div className="arena-lobby">
-        <section className="arena-lobby-intro"><div className="eyebrow"><span className="tiny-line" /> NO BOTS. REAL RIVALS.</div><h1>MEET IN<br /><span>THE ARENA.</span></h1><p>Bring your name.<br />Leave with the high score.</p><div className="arena-rule-chips"><span><Users size={15} />2–6 players</span><span><Trophy size={15} />First to 10</span><span><Zap size={15} />3-minute rounds</span></div>
-          <div className="arena-map-preview" aria-hidden="true"><div className="map-grid" />{ARENA_COVER.map((box, index) => <i key={index} style={{ left: `${(box.x / ARENA.width + 0.5) * 100}%`, top: `${(box.z / ARENA.depth + 0.5) * 100}%`, width: `${box.width / ARENA.width * 100}%`, height: `${box.depth / ARENA.depth * 100}%` }} />)}<span className="map-player a" /><span className="map-player b" /><span className="map-player c" /><b>THE EXCHANGE / ARENA 01</b></div>
-          <p className="arena-rules">Move freely, use cover, and outshoot your friends. Respawn after 3 seconds. Highest eliminations wins; equal scores share the win.</p>
+        <section className="arena-lobby-intro"><div className="eyebrow"><span className="tiny-line" /> NO BOTS. REAL RIVALS.</div><h1>MEET IN<br /><span>THE ARENA.</span></h1><p>Bring your name.<br />Leave with the high score.</p><div className="arena-rule-chips"><span><Users size={15} />2-{ARENA.maxPlayers} players</span><span><Trophy size={15} />First to 10</span><span><Zap size={15} />3-minute rounds</span></div>
+          <div className="arena-map-preview" aria-hidden="true"><div className="map-grid" />{map.cover.map((box, index) => <i key={index} style={{ left: `${(box.x / map.width + 0.5) * 100}%`, top: `${(box.z / map.depth + 0.5) * 100}%`, width: `${box.width / map.width * 100}%`, height: `${box.depth / map.depth * 100}%` }} />)}<span className="map-player a" /><span className="map-player b" /><span className="map-player c" /><b>{map.name.toUpperCase()} / ARENA</b></div>
+          <p className="arena-rules">Move freely, use cover, and outshoot your friends. Collect glowing weapons, health, and armor. Respawn after 3 seconds. Highest eliminations wins; equal scores share the win.</p>
         </section>
         <section className="arena-lobby-card">
           {status === 'unconfigured' ? <div className="arena-unavailable"><Radio size={35} /><h2>The arena is coming online.</h2><p>Online play is not available on this deployment yet. You can keep playing solo.</p><button className="primary-button" onClick={leave}>BACK TO SOLO</button></div> : !room ? <>
             <div className="arena-card-heading"><span>YOUR NEXT RIVAL IS WAITING</span><h2>Join the fight.</h2></div>
             <div className="arena-join-tabs" role="group" aria-label="Room action"><button aria-pressed={joinMode === 'create'} onClick={() => setJoinMode('create')}>CREATE ROOM</button><button aria-pressed={joinMode === 'join'} onClick={() => setJoinMode('join')}>JOIN FRIENDS</button></div>
-            <form onSubmit={event => { event.preventDefault(); audio.unlock(); try { localStorage.setItem('neon-rush-player-name', name.trim()); } catch { /* Optional preference. */ } client.join(name.trim(), style.id, joinMode === 'join' ? code : undefined); }}>
+            <form onSubmit={event => { event.preventDefault(); audio.unlock(); try { localStorage.setItem('neon-rush-player-name', name.trim()); } catch { /* Optional preference. */ } client.join(name.trim(), style.id, joinMode === 'join' ? code : undefined, settings); }}>
               <label className="arena-field">PLAYER NAME<input value={name} onChange={event => setName(event.target.value)} placeholder="Your callsign" minLength={2} maxLength={18} autoComplete="nickname" required disabled={connection.pending} /></label>
               {joinMode === 'join' && <label className="arena-field">ROOM CODE<input className="room-code-input" value={code} onChange={event => setCode(event.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 6))} placeholder="ABC234" minLength={6} maxLength={6} required autoComplete="off" disabled={connection.pending} /></label>}
+              {joinMode === 'create' && <RoomOptions {...settings} disabled={connection.pending} onChange={setSettings} />}
               <button className="primary-button arena-join-button" aria-busy={!connected || connection.pending} disabled={!connected || connection.pending}><Swords size={18} />{!connected ? 'CONNECTING TO ARENA…' : connection.pending ? 'JOINING…' : joinMode === 'join' ? 'JOIN ROOM' : 'CREATE A ROOM'}</button>
             </form>
             <p className="arena-connection-note">{connected ? 'Share your room code with friends. Everyone readies up before the host starts.' : 'The server may take about a minute to wake up on its first connection.'}</p>
             <div className="arena-live-info"><Wifi size={16} /><span>{connected ? 'Live server connection' : 'Waiting for server'}</span><b>{connected && connection.latency !== null ? `${connection.latency} ms` : '—'}</b></div>
           </> : <>
             <div className="arena-room-title"><div><span>YOUR PRIVATE ROOM</span><h2>{room.code}</h2></div><button className="arena-copy" onClick={() => void copyInvite()}><Copy size={16} />INVITE</button></div><p className="arena-copy-status" role="status">{copied || 'Send this code to your friends to join.'}</p>
-            <div className="arena-roster-title"><span>LIVE PLAYERS</span><b>{room.players.filter(player => player.connected).length} / {ARENA.maxPlayers}</b></div>
+            {host ? <RoomOptions capacity={room.capacity ?? 6} mapId={room.mapId ?? 'exchange'} minimum={room.players.length} disabled={!connected} onChange={next => client.send({ type: 'settings', ...next })} /> : <p className="arena-room-summary">{map.name} / {room.capacity ?? 6} player limit</p>}
+            <div className="arena-roster-title"><span>LIVE PLAYERS</span><b>{room.players.filter(player => player.connected).length} / {room.capacity ?? 6}</b></div>
             <ul className="arena-roster">{room.players.map(player => <li key={player.id} className={voiceState.talking[player.id] ? 'is-talking' : ''}><span className="player-avatar" style={{ '--player-color': player.color } as CSSProperties}>{player.name.slice(0, 2).toUpperCase()}</span><div><strong>{player.name}{player.id === playerId && <small> YOU</small>}</strong><span>{!player.connected ? 'Reconnecting…' : voiceState.talking[player.id] ? 'Speaking' : player.muted ? 'Mic muted' : player.id === room.hostId ? 'Room host' : 'Voice ready'}</span></div>{player.muted ? <MicOff size={14} className="voice-mute-icon" /> : <Mic size={14} className={`voice-mic-icon ${voiceState.talking[player.id] ? 'is-talking' : ''}`} />}{player.id === room.hostId && <Crown size={15} className="host-crown" />}<b className={player.ready ? 'player-ready' : 'player-waiting'}>{!player.connected ? 'OFFLINE' : player.ready ? 'READY' : 'WAITING'}</b></li>)}</ul>
             <VoiceDock voice={voice} state={voiceState} />
             <ChatPanel client={client} messages={connection.chat} playerId={playerId} disabled={!connected} />
@@ -185,24 +203,25 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
       </div> : <div className="arena-match-layout">
         <section ref={stage} className={`arena-stage ${expanded ? 'arena-expanded' : ''}`} aria-label="Live multiplayer arena">
           <div className="arena-canvas"><ArenaScene client={client} room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
-          <div className="arena-match-top"><span><i /> THE EXCHANGE</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls"><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
+          <div className="arena-match-top"><span><i /> {map.name.toUpperCase()}</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls"><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
           {displayNote && expanded && <div className="arena-display-note" role="status">{displayNote}</div>}
-          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload ? <b>V:</b> hold to talk.</p><p>Touch: left pad moves, right pad aims and fires. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Use room chat or enable mic to talk with the room. Online matches keep running when you switch tabs.</p></div>}
+          {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload / <b>V:</b> hold to talk.</p><p>Touch: left pad moves without firing. Touch and drag the right pad to aim and fire; release or return to the touch origin to stop. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Use room chat or enable mic to talk with the room. Online matches keep running when you switch tabs.</p></div>}
           <div className="arena-kill-feed" aria-live="polite">{room.events.filter(event => event.kind === 'kill').slice(0, 3).map(event => <span key={event.id}><Crosshair size={11} />{event.text}</span>)}</div>
           <div className="arena-chat-feed" aria-live="polite">{connection.chat.slice(-8).map(message => <span key={message.id}><b style={{ color: message.color }}>{message.name}</b> {message.text}</span>)}</div>
-          <div className="arena-radar" role="img" aria-label="Live map of every connected player"><span>LIVE RADAR</span><div>{ARENA_COVER.map((box, index) => <i key={index} style={{ left: `${(box.x / ARENA.width + 0.5) * 100}%`, top: `${(box.z / ARENA.depth + 0.5) * 100}%`, width: `${box.width / ARENA.width * 100}%`, height: `${box.depth / ARENA.depth * 100}%` }} />)}{room.players.filter(player => player.connected && player.hp > 0).map(player => <b key={player.id} title={player.name} className={player.id === playerId ? 'self' : ''} style={{ left: `${(player.x / ARENA.width + 0.5) * 100}%`, top: `${(player.z / ARENA.depth + 0.5) * 100}%`, background: player.color }} />)}</div></div>
+          <div className="arena-radar" role="img" aria-label="Live map of every connected player"><span>LIVE RADAR</span><div>{map.cover.map((box, index) => <i key={index} style={{ left: `${(box.x / map.width + 0.5) * 100}%`, top: `${(box.z / map.depth + 0.5) * 100}%`, width: `${box.width / map.width * 100}%`, height: `${box.depth / map.depth * 100}%` }} />)}{room.players.filter(player => player.connected && player.hp > 0).map(player => <b key={player.id} title={player.name} className={player.id === playerId ? 'self' : ''} style={{ left: `${(player.x / map.width + 0.5) * 100}%`, top: `${(player.z / map.depth + 0.5) * 100}%`, background: player.color }} />)}</div></div>
           {room.phase === 'countdown' && <div className="arena-center-overlay"><span>ALL RUNNERS CONNECTED</span><strong>{Math.max(1, Math.ceil(room.countdown))}</strong><p>Get ready. Watch your corners.</p></div>}
           {room.phase === 'playing' && own && own.hp <= 0 && <div className="arena-respawn" role="status"><strong>REBOOTING IN {Math.max(1, Math.ceil(own.respawnIn))}</strong><span>You’ll rejoin the fight with full health.</span></div>}
           {room.phase === 'playing' && own && <>
-            <div className="arena-vitals"><div><Shield size={16} /><strong>{own.hp}</strong><span>HEALTH</span></div><i><b style={{ width: `${own.hp}%`, background: own.color }} /></i><small>{own.shield > 0 ? 'SPAWN SHIELD · FIRING ENDS PROTECTION' : own.dashCooldown > 0 ? `DASH IN ${own.dashCooldown.toFixed(1)}s` : 'DASH READY · SPACE'}</small></div>
-            <div className="arena-ammo"><span>ARENA BLASTER</span><strong>{own.reload > 0 ? '↻' : own.ammo}<small> / {ARENA.magazine}</small></strong><button disabled={!active || own.reload > 0} onClick={() => { controls.current.reload = true; }}><RotateCcw size={13} />{own.reload > 0 ? `RELOADING ${own.reload.toFixed(1)}s` : 'RELOAD · R'}</button></div>
+            <div className="arena-vitals"><div><Shield size={16} /><strong>{own.hp}</strong><span>HP{own.armor > 0 ? ` + ${own.armor} ARMOR` : ''}</span></div><i><b style={{ width: `${own.hp}%`, background: own.color }} /></i><small>{own.shield > 0 ? 'SPAWN SHIELD · FIRING ENDS PROTECTION' : own.dashCooldown > 0 ? `DASH IN ${own.dashCooldown.toFixed(1)}s` : 'DASH READY · SPACE'}</small></div>
+            <div className="arena-ammo"><span>{arenaWeapon(own.weapon).name.toUpperCase()}</span><strong>{own.reload > 0 ? '↻' : own.ammo}<small> / {arenaWeapon(own.weapon).magazine}</small></strong><button disabled={!active || own.reload > 0} onClick={() => { controls.current.reload = true; }}><RotateCcw size={13} />{own.reload > 0 ? `RELOADING ${own.reload.toFixed(1)}s` : 'RELOAD · R'}</button></div>
             <div className="arena-mobile-controls"><TouchPad kind="move" controls={controls} disabled={!active} /><button className="arena-dash" disabled={!active || own.dashCooldown > 0} onClick={() => { controls.current.dash = true; }}><Zap size={20} />DASH</button><TouchPad kind="aim" controls={controls} disabled={!active} /></div>
+            <div className="arena-weapon-note">Walk over glowing stations to switch weapons, heal, or gain armor.</div>
             <div className="arena-hit-flash" style={{ opacity: own.hit > 0 ? 0.45 : 0 }} />
           </>}
           {room.phase === 'finished' && <div className="arena-result-overlay"><div className="arena-result-card"><Trophy size={34} /><span>ROUND {room.round} COMPLETE</span><h2>{room.winners.length > 1 ? 'SHARED VICTORY' : room.winners.includes(playerId) ? 'YOU WIN.' : 'GOOD FIGHT.'}</h2><p>{room.endReason}</p><ol>{[...room.players].sort(byScore).map(player => <li key={player.id}><span style={{ color: player.color }}>{player.name}{player.id === playerId ? ' (you)' : ''}</span><b>{player.kills} K <small>/ {player.deaths} D</small></b></li>)}</ol>{host ? <button className="primary-button" disabled={!connected} onClick={() => client.send({ type: 'lobby' })}><RotateCcw size={16} />REMATCH LOBBY</button> : <p>Waiting for the host to open a rematch.</p>}<button className="text-button" onClick={leave}>Leave arena</button></div></div>}
           {(!connected || graphicsFailed) && <div className="arena-network-overlay" role="status"><Wifi size={30} /><strong>{graphicsFailed ? 'Graphics unavailable' : 'Reconnecting…'}</strong><p>{graphicsFailed ? 'Reload with WebGL enabled to return to the arena.' : 'Your match continues. Rejoin within 20 seconds to keep your place.'}</p><button className="arena-small-button" onClick={leave}>BACK TO SOLO</button></div>}
         </section>
-        <aside className="arena-scoreboard"><div className="arena-scoreboard-heading"><div><span>LIVE STANDINGS</span><h2>The contenders.</h2></div><Users size={20} /></div><VoiceDock voice={voice} state={voiceState} compact /><ChatPanel client={client} messages={connection.chat} playerId={playerId} compact disabled={!connected} /><div className="arena-score-columns"><span>PLAYER</span><span>K / D</span></div><ol>{[...room.players].sort(byScore).map((player, index) => <li key={player.id} className={`${player.id === playerId ? 'self' : ''} ${voiceState.talking[player.id] ? 'is-talking' : ''}`}><span className="arena-rank">{index + 1}</span><div><strong><i style={{ background: player.connected ? player.color : '#687789' }} />{player.name}{player.id === playerId && <small> YOU</small>}{voiceState.talking[player.id] ? <Mic size={11} /> : player.muted ? <MicOff size={11} /> : null}</strong><span>{!player.connected ? 'Reconnecting' : voiceState.talking[player.id] ? 'Speaking' : player.hp <= 0 ? 'Respawning' : `${player.hp} HP`}</span></div><b>{player.kills}<small> / {player.deaths}</small></b></li>)}</ol><div className="arena-room-footer"><span>ROOM CODE</span><strong>{room.code}</strong><small><Wifi size={12} />{connected && connection.latency !== null ? `${connection.latency} ms` : 'Reconnecting'}</small></div><button className="arena-small-button" onClick={leave}><DoorOpen size={14} />LEAVE MATCH</button><p>The match continues if you leave.</p></aside>
+        <aside className="arena-scoreboard"><div className="arena-scoreboard-heading"><div><span>LIVE STANDINGS</span><h2>The contenders.</h2></div><Users size={20} /></div><VoiceDock voice={voice} state={voiceState} compact /><ChatPanel client={client} messages={connection.chat} playerId={playerId} compact disabled={!connected} /><div className="arena-pickup-guide"><span>POWERUP STATIONS</span>{(room.pickups ?? []).map(pickup => <div key={pickup.id}><i style={{ background: pickup.kind === 'health' ? '#68ffb4' : pickup.kind === 'armor' ? '#a59aff' : arenaWeapon(pickup.kind).color }} /><span>{pickup.kind === 'health' ? '+40 health' : pickup.kind === 'armor' ? '+50 armor' : arenaWeapon(pickup.kind).name}</span><small>{pickup.availableIn > 0 ? `${Math.ceil(pickup.availableIn)}s` : 'READY'}</small></div>)}</div><div className="arena-score-columns"><span>PLAYER</span><span>K / D</span></div><ol>{[...room.players].sort(byScore).map((player, index) => <li key={player.id} className={`${player.id === playerId ? 'self' : ''} ${voiceState.talking[player.id] ? 'is-talking' : ''}`}><span className="arena-rank">{index + 1}</span><div><strong><i style={{ background: player.connected ? player.color : '#687789' }} />{player.name}{player.id === playerId && <small> YOU</small>}{voiceState.talking[player.id] ? <Mic size={11} /> : player.muted ? <MicOff size={11} /> : null}</strong><span>{!player.connected ? 'Reconnecting' : voiceState.talking[player.id] ? 'Speaking' : player.hp <= 0 ? 'Respawning' : `${player.hp} HP`}</span></div><b>{player.kills}<small> / {player.deaths}</small></b></li>)}</ol><div className="arena-room-footer"><span>ROOM CODE</span><strong>{room.code}</strong><small><Wifi size={12} />{connected && connection.latency !== null ? `${connection.latency} ms` : 'Reconnecting'}</small></div><button className="arena-small-button" onClick={leave}><DoorOpen size={14} />LEAVE MATCH</button><p>The match continues if you leave.</p></aside>
       </div>}
     </main>
     <footer><span>ONE ARENA. REAL PLAYERS. <b>MAKE YOUR NAME.</b></span><span><i /> LIVE MULTIPLAYER</span></footer>

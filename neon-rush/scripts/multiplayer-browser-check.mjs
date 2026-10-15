@@ -45,6 +45,8 @@ try {
   await a.goto(base, { waitUntil: 'networkidle' });
   await a.getByRole('button', { name: 'MULTIPLAYER ARENA', exact: true }).click();
   await a.getByLabel('PLAYER NAME', { exact: true }).fill('Alice');
+  await a.getByRole('button', { name: 'Increase player limit', exact: true }).click();
+  assert.equal(await a.getByLabel('Player limit', { exact: true }).innerText(), '7');
   await a.getByRole('button', { name: 'CREATE A ROOM', exact: true }).click();
   await a.locator('.arena-room-title h2').waitFor(); const code = await a.locator('.arena-room-title h2').innerText();
   assert.match(code, /^[A-Z2-9]{6}$/);
@@ -54,6 +56,9 @@ try {
   await b.getByRole('button', { name: 'JOIN ROOM', exact: true }).click();
   await b.locator('.arena-roster li').filter({ hasText: 'Alice' }).waitFor();
   await a.locator('.arena-roster li').filter({ hasText: 'Bob' }).waitFor();
+  assert.equal(await b.getByRole('button', { name: 'Increase player limit', exact: true }).count(), 0);
+  await a.getByRole('button', { name: 'Decrease player limit', exact: true }).click();
+  await b.waitForFunction(() => window.__arenaSnapshot?.capacity === 6);
   await a.getByLabel('Chat message', { exact: true }).fill('glhf');
   await a.getByRole('button', { name: 'Send chat', exact: true }).click();
   await b.locator('.arena-chat li').filter({ hasText: 'glhf' }).waitFor();
@@ -86,7 +91,7 @@ try {
     const rect = document.querySelector('.arena-canvas canvas').getBoundingClientRect();
     const camera = new PerspectiveCamera(50, rect.width / rect.height, 0.1, 120);
     camera.position.set(self.x * 0.2, 29, self.z * 0.25 + 23); camera.lookAt(self.x * 0.2, 0, self.z * 0.25); camera.updateMatrixWorld();
-    const point = new Vector3(rival.x, 0, rival.z).project(camera);
+    const point = new Vector3(rival.x, 1.05, rival.z).project(camera);
     return { x: rect.left + (point.x + 1) * rect.width / 2, y: rect.top + (1 - point.y) * rect.height / 2 };
   });
   await a.mouse.move(aim.x, aim.y); await a.mouse.down();
@@ -106,7 +111,7 @@ try {
   const bobId = await b.evaluate(() => window.__arenaId);
   await b.reload({ waitUntil: 'networkidle' });
   await b.waitForFunction(id => window.__arenaId === id && window.__arenaSnapshot?.phase === 'playing', bobId, { timeout: 15000 });
-  assert.equal(await b.locator('.arena-scoreboard li').count(), 2);
+  assert.equal(await b.locator('.arena-scoreboard > ol > li').count(), 2);
   await b.bringToFront();
   await b.locator('.arena-stage').scrollIntoViewIfNeeded();
   const move = await b.getByRole('group', { name: 'Move runner with pad or arrow keys' }).boundingBox();
@@ -114,7 +119,14 @@ try {
   const cdp = await contexts[1].newCDPSession(b);
   const touches = [{ id: 1, x: move.x + move.width * 0.8, y: move.y + move.height / 2 }, { id: 2, x: fire.x + fire.width / 2, y: fire.y + fire.height * 0.2 }];
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touches });
+  await b.waitForFunction(() => window.__lastInput?.dx > 0.2 && window.__lastInput?.fire === false, undefined, { timeout: 5000 });
+  touches[1].y -= 28;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touches });
   await b.waitForFunction(() => window.__lastInput?.dx > 0.2 && window.__lastInput?.fire === true, undefined, { timeout: 5000 });
+  assert.ok(await b.evaluate(() => window.__lastInput.aimDZ < -0.2));
+  // CDP touchEnd lists the contacts to release, not the contacts to retain.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [touches[1]] });
+  await b.waitForFunction(() => window.__lastInput?.dx > 0.2 && window.__lastInput?.fire === false);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await b.waitForFunction(() => window.__lastInput?.dx === 0 && window.__lastInput?.fire === false);
   await b.getByRole('button', { name: 'DASH', exact: true }).click();
@@ -135,10 +147,14 @@ try {
   }
   const landscapeMove = await b.getByRole('group', { name: 'Move runner with pad or arrow keys' }).boundingBox();
   const landscapeFire = await b.getByRole('group', { name: 'Aim and fire with pad or arrow keys' }).boundingBox();
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [
+  const landscapeTouches = [
     { id: 1, x: landscapeMove.x + landscapeMove.width * 0.8, y: landscapeMove.y + landscapeMove.height / 2 },
-    { id: 2, x: landscapeFire.x + landscapeFire.width / 2, y: landscapeFire.y + landscapeFire.height * 0.2 },
-  ] });
+    { id: 2, x: landscapeFire.x + landscapeFire.width / 2, y: landscapeFire.y + landscapeFire.height / 2 },
+  ];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: landscapeTouches });
+  await b.waitForFunction(() => window.__lastInput?.dx > 0.2 && window.__lastInput?.fire === false);
+  landscapeTouches[1].x += 28;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: landscapeTouches });
   await b.waitForFunction(() => window.__lastInput?.dx > 0.2 && window.__lastInput?.fire === true);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
   await b.waitForFunction(() => window.__lastInput?.dx === 0 && window.__lastInput?.fire === false);
@@ -171,6 +187,10 @@ try {
   await a.locator('.arena-room-title h2').waitFor();
   assert.equal(await a.locator('.arena-roster li').count(), 1);
   assert.equal(await a.getByRole('button', { name: 'START MATCH', exact: true }).isDisabled(), true);
+  const mapAssets = new Set();
+  a.on('response', response => { if (/\/models\/arena\/.*\.glb$/.test(response.url()) && response.ok()) mapAssets.add(response.url().split('/').at(-1)); });
+  await a.getByRole('button', { name: /Orbital Foundry/ }).click();
+  await a.waitForFunction(() => window.__arenaSnapshot?.mapId === 'foundry');
   await b.getByRole('button', { name: 'MULTIPLAYER ARENA', exact: true }).click();
   await b.getByRole('button', { name: 'JOIN FRIENDS', exact: true }).click();
   await b.getByLabel('ROOM CODE', { exact: true }).fill(code);
@@ -179,6 +199,13 @@ try {
   await a.getByRole('button', { name: 'I’M READY', exact: true }).click();
   await a.getByRole('button', { name: 'START MATCH', exact: true }).click();
   await a.waitForFunction(() => window.__arenaSnapshot?.phase === 'playing' && window.__arenaSnapshot.round === 2);
+  await a.waitForFunction(() => window.__arenaSnapshot?.mapId === 'foundry' && window.__arenaSnapshot.pickups.length === 5);
+  await a.locator('.arena-match-top').filter({ hasText: 'ORBITAL FOUNDRY' }).waitFor();
+  await a.waitForTimeout(1500);
+  assert.deepEqual([...mapAssets].sort(), ['antenna.glb', 'barrels.glb', 'cargo.glb', 'reactor.glb']);
+  await a.screenshot({ path: 'test-results/multiplayer-foundry-desktop.png', fullPage: true });
+  await b.setViewportSize({ width: 390, height: 844 });
+  await b.screenshot({ path: 'test-results/multiplayer-foundry-mobile.png', fullPage: true });
   assert.equal(await a.locator('.arena-network-overlay').count(), 0, 'Rematch recreates the 3D renderer without a false graphics failure');
   await a.getByRole('button', { name: 'SOLO MODE', exact: true }).click();
   await a.getByRole('button', { name: 'START RUN', exact: false }).waitFor();
