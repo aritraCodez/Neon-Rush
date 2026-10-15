@@ -21,7 +21,16 @@
 .arena-diagnostics { position: fixed; z-index: 100; top: 70px; right: 12px; max-width: calc(100vw - 24px); padding: 12px; margin: 0; pointer-events: none; color: #bdff54; background: #070d19eb; border: 1px solid #31435d; font: 11px/1.6 monospace; }
 
 /* Touch capability, rather than width alone, keeps pads on landscape phones. */
-.arena-display-actions{display:flex;gap:8px;pointer-events:auto}
+.arena-display-actions{display:flex;gap:8px;pointer-events:auto;align-items:center}
+.arena-comm{position:relative;color:#c5d7e6;background:#122033cc;border:1px solid #3a536a88;border-radius:8px;width:40px;height:40px}
+.arena-comm.is-live{color:var(--lime);border-color:#bdff5466}
+.arena-comm.is-talking{box-shadow:0 0 12px #bdff5466}
+.arena-comm>b{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ff4d7a;color:#fff;font-size:9px;display:grid;place-items:center}
+.header-actions .arena-comm{width:34px;height:34px}
+.arena-chat-pop{position:fixed;z-index:1200;top:max(72px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:min(340px,calc(100vw - 24px));max-height:min(70dvh,520px);overflow:auto;background:#0d1a27f2;border:1px solid #3a536a;border-radius:10px;padding:10px;box-shadow:0 16px 40px #0008}
+.arena-chat-pop-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:9px;letter-spacing:1.4px;color:#8dafc7}
+.arena-chat-pop .arena-chat{margin:0;border:0;padding:0;background:none}
+@media(orientation:landscape) and (max-height:640px){.arena-chat-pop{top:max(10px,env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));max-height:86dvh}.arena-match-top .arena-comm{width:36px;height:36px}}
 .arena-display-actions button{min-height:44px;min-width:44px}
 .arena-display-note{position:absolute;top:70px;left:16px;right:16px;padding:8px;background:#091728e8;color:#b7cde1;font-size:11px;pointer-events:none;z-index:6}
 .arena-stage:fullscreen,.arena-stage.arena-expanded{width:100%;height:100dvh;min-height:0;max-height:none;border:0;border-radius:0;background:#091322}

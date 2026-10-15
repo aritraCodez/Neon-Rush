@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, AudioLines, Box, ChevronRight, CircleHelp, Gamepad2, Magnet, Maximize, Minimize, Settings2, Shield, Trophy, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, AudioLines, Box, ChevronRight, CircleHelp, Gamepad2, Magnet, Maximize, Minimize, Settings2, Shield, Trophy, Volume2, VolumeX, Zap } from 'lucide-react';
 import { Scene } from './components/Scene';
 import { GameOverlay, format } from './components/GameOverlay';
 import { Hud } from './components/Hud';
@@ -35,8 +35,10 @@ export default function App() {
   const [reduced, setReduced] = useState(() => readSetting('motion', window.matchMedia('(prefers-reduced-motion: reduce)').matches));
   const [touchScheme, setTouchScheme] = useState(readTouchScheme);
   const [fullscreen, setFullscreen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [fullscreenNote, setFullscreenNote] = useState('');
   const stage = useRef<HTMLDivElement>(null);
+  const touchDevice = navigator.maxTouchPoints > 0 || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
   useControls(ready && !failed && !multiplayer);
   usePlayGestures(stage, ready && !failed && !multiplayer, touchScheme);
   useEffect(() => { audio.enabled = sound; saveSetting('sound', sound); if (sound) audio.unlock(); }, [sound]);
@@ -44,7 +46,18 @@ export default function App() {
   useEffect(() => { saveSetting('quality', quality); }, [quality]);
   useEffect(() => { saveTouchScheme(touchScheme); }, [touchScheme]);
   useEffect(() => { saveRunnerStyle(runnerStyle); }, [runnerStyle]);
-  useEffect(() => { const change = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange', change); return () => document.removeEventListener('fullscreenchange', change); }, []);
+  useEffect(() => {
+    const change = () => setFullscreen(Boolean(document.fullscreenElement));
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setExpanded(false); };
+    document.addEventListener('fullscreenchange', change);
+    window.addEventListener('keydown', key);
+    return () => { document.removeEventListener('fullscreenchange', change); window.removeEventListener('keydown', key); };
+  }, []);
+  useEffect(() => {
+    if (!fullscreenNote) return;
+    const hide = window.setTimeout(() => setFullscreenNote(''), 3500);
+    return () => clearTimeout(hide);
+  }, [fullscreenNote]);
   useEffect(() => {
     // Expose only supported, real game actions to compatible agent browsers.
     type Context = { registerTool: (tool: object, options: { signal: AbortSignal }) => void | Promise<void> };
@@ -62,11 +75,17 @@ export default function App() {
   const onError = useCallback(() => { setFailed(true); game.menu(); }, []);
   const openDialog = (value: 'help' | 'settings' | 'missions' | 'workshop') => { game.pause(); game.fire(false); setDialog(value); };
   const toggleFullscreen = async () => {
+    if (expanded) { setExpanded(false); setFullscreenNote(''); return; }
+    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
+    if (touchDevice) {
+      setExpanded(true);
+      setFullscreenNote('Screen-fit mode. Use Exit fullscreen to return.');
+      return;
+    }
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else if (stage.current?.requestFullscreen) await stage.current.requestFullscreen();
-      else setFullscreenNote('Fullscreen is unavailable in this browser.');
-    } catch { setFullscreenNote('Fullscreen is unavailable in this browser.'); }
+      if (stage.current?.requestFullscreen) await stage.current.requestFullscreen();
+      else { setExpanded(true); setFullscreenNote('Screen-fit mode. Use Exit fullscreen to return.'); }
+    } catch { setExpanded(true); setFullscreenNote('Browser fullscreen unavailable. Screen-fit mode enabled.'); }
   };
 
   if (multiplayer) return <Suspense fallback={<div className="app"><p style={{ padding: 40 }}>Loading multiplayer arena…</p></div>}><Multiplayer style={runnerStyle} sound={sound} onSound={() => setSound(value => !value)} onExit={() => { game.menu(); setMultiplayer(false); }} /></Suspense>;
@@ -81,15 +100,15 @@ export default function App() {
     <main>
       <div className="section-topline"><span><span className="live-dot" /> NIGHT CITY / SYSTEM ONLINE</span><span>CAMPAIGN + ENDLESS</span></div>
       <nav className="arena-mode-nav" aria-label="Game mode"><button aria-current="page"><Gamepad2 size={16} />SOLO CAMPAIGN</button><button onClick={() => { game.pause(); setDialog(null); setMultiplayer(true); }}><Zap size={16} />MULTIPLAYER ARENA</button></nav>
-      <div ref={stage} className={`game-stage phase-${state.phase} ${state.campaign.active ? 'campaign-mode' : ''} touch-${touchScheme}`} aria-label="Neon Rush 3D game">
+      <div ref={stage} className={`game-stage phase-${state.phase} ${state.campaign.active ? 'campaign-mode' : ''} touch-${touchScheme} ${expanded ? 'stage-expanded' : ''}`} aria-label="Neon Rush 3D game">
         <div className="scene"><Scene highQuality={quality} onReady={onReady} onError={onError} levelId={state.campaign.levelId} runnerStyle={runnerStyle} suspended={dialog === 'workshop'} /></div>
         <div className="scene-shade" />
         <Hud state={state} touchScheme={touchScheme} />
         <CombatHud state={state} touchScheme={touchScheme} />
         <GameOverlay state={state} ready={ready} failed={failed} onHelp={() => openDialog('help')} onMissions={() => openDialog('missions')} />
         <CampaignOverlay state={state} onMissions={() => openDialog('missions')} />
-        <button className="fullscreen-button icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={toggleFullscreen}>{fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}</button>
-        {fullscreenNote && <div className="fullscreen-note" role="status">{fullscreenNote}<button aria-label="Dismiss message" onClick={() => setFullscreenNote('')}><X size={14} /></button></div>}
+        <button className="fullscreen-button icon-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={17} /> : <Maximize size={17} />}</button>
+        {fullscreenNote && <div className="fullscreen-note" role="status">{fullscreenNote}</div>}
       </div>
 
       <button className="runner-lab-entry" onClick={() => openDialog('workshop')} aria-label="Open 3D Runner Lab"><span className="lab-entry-icon"><Box size={24} /></span><span className="lab-entry-copy"><strong>BUILD YOUR IDENTITY.</strong><small>Explore your runner in 3D. Change your armor. Preview every weapon.</small></span><span className="lab-entry-tag"><span>ENTER RUNNER LAB</span><ChevronRight size={20} /></span></button>

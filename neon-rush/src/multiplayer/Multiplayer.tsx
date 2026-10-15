@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react';
-import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Headphones, Mic, MicOff, Send, Radio, Maximize, Minimize, RotateCcw, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, Zap } from 'lucide-react';
+import { ArrowLeft, Check, Copy, Crosshair, Crown, DoorOpen, Headphones, MessageSquare, Mic, MicOff, Send, Radio, Maximize, Minimize, RotateCcw, Shield, Swords, Trophy, Users, Volume2, VolumeX, Wifi, X, Zap } from 'lucide-react';
 import { ArenaClient } from './client';
 import { NetworkDiagnostics } from './NetworkDiagnostics';
 import { ArenaScene } from './ArenaScene';
@@ -108,28 +108,37 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   const [copied, setCopied] = useState('');
   const [graphicsFailed, setGraphicsFailed] = useState(false);
   const [help, setHelp] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatSeen, setChatSeen] = useState(0);
   const [touchDevice] = useState(() => navigator.maxTouchPoints > 0 || matchMedia('(any-pointer: coarse)').matches);
   const stage = useRef<HTMLElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [displayNote, setDisplayNote] = useState('');
   const toggleFullscreen = useCallback(async () => {
-    if (expanded) { setExpanded(false); return; }
+    if (expanded) { setExpanded(false); setDisplayNote(''); return; }
+    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
+    if (touchDevice) { setExpanded(true); setDisplayNote('Screen-fit mode. Use Exit fullscreen to return.'); return; }
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else if (stage.current?.requestFullscreen) await stage.current.requestFullscreen();
+      if (stage.current?.requestFullscreen) await stage.current.requestFullscreen();
       else { setExpanded(true); setDisplayNote('Screen-fit mode. Use Exit fullscreen to return.'); }
     } catch { setExpanded(true); setDisplayNote('Browser fullscreen unavailable. Screen-fit mode enabled.'); }
-  }, [expanded]);
+  }, [expanded, touchDevice]);
   useEffect(() => {
     const change = () => setFullscreen(document.fullscreenElement === stage.current && !!stage.current);
     const key = (event: KeyboardEvent) => {
       if (event.altKey && event.key === 'Enter' && stage.current) { event.preventDefault(); void toggleFullscreen(); }
-      if (event.key === 'Escape') { setExpanded(false); setHelp(false); }
+      if (event.key === 'Escape') { setExpanded(false); setHelp(false); setChatOpen(false); }
     };
     document.addEventListener('fullscreenchange', change); window.addEventListener('keydown', key);
     return () => { document.removeEventListener('fullscreenchange', change); window.removeEventListener('keydown', key); };
   }, [toggleFullscreen]);
+  useEffect(() => {
+    if (!displayNote) return;
+    const hide = window.setTimeout(() => setDisplayNote(''), 3500);
+    return () => clearTimeout(hide);
+  }, [displayNote]);
+  useEffect(() => { if (chatOpen) setChatSeen(connection.chat.length); }, [chatOpen, connection.chat.length]);
   useEffect(() => {
     if (room?.phase === 'lobby' || !room) { setExpanded(false); setDisplayNote(''); }
     if (room?.phase === 'countdown' && touchDevice) stage.current?.scrollIntoView({ block: 'start' });
@@ -167,16 +176,25 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
   const connected = status === 'connected';
   const map = arenaMap(room?.mapId ?? settings.mapId);
   const inLobby = !room || room.phase === 'lobby';
+  const unread = Math.max(0, connection.chat.length - chatSeen);
+  const micOn = voiceState.live && !voiceState.muted;
+  const toggleVoice = () => { if (!voiceState.live) void voice.enable(); else voice.setMuted(!voiceState.muted); };
+  const toggleChat = () => setChatOpen(open => { const next = !open; if (next) setChatSeen(connection.chat.length); return next; });
+  const comms = room ? <>
+    <button className={`icon-button arena-comm ${micOn ? 'is-live' : ''} ${voiceState.talking.local ? 'is-talking' : ''}`} aria-label={!voiceState.live ? 'Enable microphone' : micOn ? 'Mute microphone' : 'Unmute microphone'} aria-pressed={micOn} onClick={toggleVoice}>{micOn ? <Mic size={18} /> : <MicOff size={18} />}</button>
+    <button className={`icon-button arena-comm ${chatOpen ? 'is-live' : ''}`} aria-label="Room chat" aria-expanded={chatOpen} onClick={toggleChat}><MessageSquare size={18} />{unread > 0 && !chatOpen && <b>{unread > 9 ? '9+' : unread}</b>}</button>
+  </> : null;
 
   return <div className={`app multiplayer-app ${touchDevice ? 'arena-touch' : ''}`}>
     <NetworkDiagnostics client={client} />
     <header className="site-header"><button className="brand arena-brand" onClick={leave}><span className="brand-mark"><Zap size={23} fill="currentColor" /></span><span>NEON<span className="brand-light">RUSH</span><small>MULTIPLAYER ARENA</small></span></button>
       <div className="arena-header-status"><span className={`connection-dot ${connected ? 'connected' : ''}`} /><span>{connected ? 'CONNECTED' : status === 'unconfigured' ? 'ARENA OFFLINE' : status === 'offline' ? 'DISCONNECTED' : 'CONNECTING'}</span>{connected && <b><Users size={14} />{connection.online ?? 0} online</b>}</div>
-      <div className="header-actions"><button className="icon-button" onClick={onSound} aria-label={sound ? 'Mute sound' : 'Enable sound'}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="arena-exit" onClick={leave}><ArrowLeft size={15} />SOLO MODE</button></div>
+      <div className="header-actions">{comms}<button className="icon-button" onClick={onSound} aria-label={sound ? 'Mute sound' : 'Enable sound'}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="arena-exit" onClick={leave}><ArrowLeft size={15} />SOLO MODE</button></div>
     </header>
     <main>
       <div className="arena-topline"><span><Radio size={13} /> PLAYER VS PLAYER</span><span>{room ? `ROOM ${room.code} / ROUND ${room.round || 1}` : 'HOST-SET ROOMS / FREE FOR ALL'}</span></div>
       {connection.error && <div className="arena-error" role="alert">{connection.error}{status === 'offline' && <button onClick={client.connect}>Reconnect</button>}</div>}
+      {chatOpen && room && <div className="arena-chat-pop" role="dialog" aria-label="Room chat"><div className="arena-chat-pop-head"><span>ROOM CHAT</span><button className="icon-button" aria-label="Close chat" onClick={() => setChatOpen(false)}><X size={16} /></button></div><ChatPanel client={client} messages={connection.chat} playerId={playerId} compact disabled={!connected} /></div>}
       {inLobby ? <div className="arena-lobby">
         <section className="arena-lobby-intro"><div className="eyebrow"><span className="tiny-line" /> NO BOTS. REAL RIVALS.</div><h1>MEET IN<br /><span>THE ARENA.</span></h1><p>Bring your name.<br />Leave with the high score.</p><div className="arena-rule-chips"><span><Users size={15} />2-{ARENA.maxPlayers} players</span><span><Trophy size={15} />First to 10</span><span><Zap size={15} />3-minute rounds</span></div>
           <div className="arena-map-preview" aria-hidden="true"><div className="map-grid" />{map.cover.map((box, index) => <i key={index} style={{ left: `${(box.x / map.width + 0.5) * 100}%`, top: `${(box.z / map.depth + 0.5) * 100}%`, width: `${box.width / map.width * 100}%`, height: `${box.depth / map.depth * 100}%` }} />)}<span className="map-player a" /><span className="map-player b" /><span className="map-player c" /><b>{map.name.toUpperCase()} / ARENA</b></div>
@@ -210,7 +228,7 @@ export default function Multiplayer({ onExit, style, sound, onSound }: { onExit:
       </div> : <div className="arena-match-layout">
         <section ref={stage} className={`arena-stage ${expanded ? 'arena-expanded' : ''}`} aria-label="Live multiplayer arena">
           <div className="arena-canvas"><ArenaScene client={client} room={room} playerId={playerId} controls={controls} onError={graphicsError} talking={voiceState.talking} /></div>
-          <div className="arena-match-top"><span><i /> {map.name.toUpperCase()}</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls"><button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
+          <div className="arena-match-top"><span><i /> {map.name.toUpperCase()}</span><div><small>FIRST TO {ARENA.winningKills}</small><strong>{timeLabel(room.remaining)}</strong></div><nav className="arena-display-actions" aria-label="Arena display controls">{comms}<button className="arena-small-button" aria-expanded={help} onClick={() => setHelp(!help)}>CONTROLS</button><button className="arena-small-button" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} title="Fullscreen (Alt+Enter)" onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? <Minimize size={18} /> : <Maximize size={18} />}</button></nav></div>
           {displayNote && expanded && <div className="arena-display-note" role="status">{displayNote}</div>}
           {help && <div className="arena-controls-help"><p><b>WASD / arrows:</b> move · <b>Mouse:</b> aim · <b>Hold click / F:</b> fire · <b>Space / Shift:</b> dash · <b>R:</b> reload / <b>V:</b> hold to talk.</p><p>Touch: left pad moves without firing. A short drag on the right pad only changes aim. Stretch it out to the ring to fire, and release to stop. Hold both pads together; tap Dash while moving. Rotate your phone for a wider view. Alt+Enter toggles fullscreen on PC. Use room chat or enable mic to talk with the room. Online matches keep running when you switch tabs.</p></div>}
           <div className="arena-kill-feed" aria-live="polite">{room.events.filter(event => event.kind === 'kill').slice(0, 3).map(event => <span key={event.id}><Crosshair size={11} />{event.text}</span>)}</div>
