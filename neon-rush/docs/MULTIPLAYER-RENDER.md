@@ -1,6 +1,6 @@
 # Deploy the multiplayer arena on Render
 
-Deploy the updated backend before the frontend: the new frontend uses protocol 2 sequenced input batches and delta snapshots. The backend still accepts legacy clients. Start with backend `ARENA_TICK_RATE=30`, `ARENA_SNAPSHOT_RATE=15`, and frontend `VITE_ARENA_INPUT_RATE=30`. See the [performance guide](MULTIPLAYER-PERFORMANCE.md) for diagnostics, measurements, and limits.
+Deploy the updated backend before the frontend: the new frontend uses protocol 2 sequenced input batches and delta snapshots. The backend still accepts legacy clients. See the [performance guide](MULTIPLAYER-PERFORMANCE.md#configuration-and-diagnostics) for rate configuration and diagnostics.
 
 The existing site is **https://neon-rush-rsii.onrender.com**. Keep it as a Render Static Site. Multiplayer uses a separate Node Web Service for WebSockets; Render routes public WebSockets through its Web Services using `wss://`. [Render WebSocket documentation](https://render.com/docs/websocket).
 
@@ -47,56 +47,6 @@ Without this value, the production game shows that the online arena is unavailab
 5. Both select **I'm Ready**. The host selects **Start Match**.
 6. Confirm movement, names, health, hits, and kills update on both screens. The live radar shows opponents outside the camera view.
 
-## Controls and match rules
+## Operations and further reading
 
-| Action | Desktop | Touch |
-| --- | --- | --- |
-| Move | WASD / arrow keys | Left pad |
-| Aim | Mouse over arena | Right pad |
-| Fire | Hold left mouse button or F | Hold/drag right pad |
-| Dash | Space / Shift while moving | Dash while moving |
-| Reload | R or Reload button | Reload button |
-| Voice chat | Enable Mic for open-mic conversation; hold V while muted | Enable Mic for open-mic conversation; hold TALK while muted |
-| Mute / deafen | MIC MUTED / HEARING buttons | Same buttons in the voice dock |
-| Text chat | Type in Room Chat, Enter to send | Same Room Chat field |
-
-Voice is peer-to-peer WebRTC audio inside the room. Text chat stays in the current room (80 characters, rate-limited) and is replayed if a player reconnects. The arena WebSocket only relays offers, answers, and ICE candidates; it does not mix or store audio. STUN is used to traverse typical home NATs. Some strict networks still need a TURN server, which this deployment does not include. Mic starts muted until a player enables it. Hold **V** or **TALK** for push-to-talk while muted.
-
-Rooms hold 2–6 players. Everyone must be ready. Rounds last 3 minutes or end when someone reaches 10 eliminations. The highest elimination count wins; equal counts share the win. Players respawn after 3 seconds. Spawn shields last 1.5 seconds, and firing ends protection. Cover stops movement and shots. The server controls movement speed, ammunition, damage, respawns, and results. Weapon/armor upgrades from solo play do not change PvP stats.
-
-Matches continue when a tab loses focus; input stops automatically. A disconnected player has 20 seconds to reconnect with the same browser tab/session. Refreshing an active match restores that session during the grace period. A connected player takes over hosting when the host disconnects. Intentional departure releases the slot immediately. Display names are room nicknames, not authenticated accounts.
-
-## Hosting model
-
-Run **one backend instance**. Rooms and scores live in that process's memory and are removed when the room empties. Redeploying/restarting the backend ends active rooms; the client reconnects and asks players to create/join a new room. This implementation does not persist ranked results. Multiple instances require a shared room store and cross-instance messaging before scaling horizontally.
-
-The backend restricts WebSocket origins, limits messages and payload size, rejects client-supplied health/score/positions, uses private random reconnect tokens, sends heartbeats, and expires disconnected sessions. Names are validated and rendered as text. Reconnect tokens are never included in shared room snapshots.
-
-## Local development and checks
-
-From `neon-rush/`, install the backend once:
-
-```sh
-npm ci --prefix server
-```
-
-Run these in two terminals:
-
-```sh
-npm run server
-```
-
-```sh
-npm run dev -- --port 5187
-```
-
-Vite proxies `/ws` to port 3001; no local environment file is needed. The default backend origin allowlist includes localhost:5173 and 127.0.0.1:5173/5187. If using another port or a LAN hostname, set `ALLOWED_ORIGINS` on the backend to the exact frontend origin. For a local **production preview**, build with `VITE_MULTIPLAYER_URL=http://127.0.0.1:3001`, and allow that preview's origin on the backend.
-
-```sh
-npm test
-npm run test:multiplayer
-npm run build
-node scripts/multiplayer-browser-check.mjs
-```
-
-The browser check requires both servers running at their default ports and a Playwright Chromium browser, or `NEON_BROWSER` set to a Chrome/Chromium executable. It exercises separate player sessions, invites, readiness, synchronized movement, actual PvP hits and kills, respawn/reload, refresh recovery, two-finger touch controls, rematches, and return to solo mode.
+Run one backend instance: rooms and sessions are in memory, so a restart ends active rooms. For controls, architecture, reconnect behavior, voice networking limits, and scaling, see the [developer architecture guide](MULTIPLAYER-ARCHITECTURE.md). For local setup and standard checks, see the [README](../../README.md#run-locally) and [verification commands](../../README.md#verification).
