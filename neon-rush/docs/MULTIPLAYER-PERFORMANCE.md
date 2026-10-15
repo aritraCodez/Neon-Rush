@@ -48,13 +48,7 @@ Press **F3**, or open the game with `?netdebug=1`, to toggle the overlay. It dis
 
 ## Reproduce verification
 
-From `neon-rush/`:
-
-```sh
-npm test
-npm run test:multiplayer
-npm run build
-```
+Use the [README verification commands](../../README.md#verification) for the standard test suites and production build. The additional browser/network checks below focus on multiplayer performance.
 
 Run `npm run server` and `npm run dev -- --port 5187` in separate terminals, then:
 
