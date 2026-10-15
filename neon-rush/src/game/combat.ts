@@ -151,7 +151,10 @@ export class CombatSystem {
     const spec = weaponById(this.weapon);
     if (this.reloading > 0 || this.cooldown > 0) return;
     if (this.ammo[this.weapon] <= 0) { this.reload(); return; }
-    const sx = player.x + 0.32, sy = player.y + (player.crouching ? 0.66 : 1.4), sz = -0.65;
+    const angle = Math.atan2(-(this.aim.x - player.x), -this.aim.z);
+    const sx = player.x + 0.42 * Math.cos(angle) + 1.05 * Math.sin(angle);
+    const sy = player.y + (player.crouching ? 0.72 : 1.18);
+    const sz = 0.42 * Math.sin(angle) - 1.05 * Math.cos(angle);
     for (let i = 0; i < spec.pellets; i++) {
       const spread = (i - (spec.pellets - 1) / 2) * spec.spread * 22;
       const jitter = spec.pellets === 1 ? (this.random() - 0.5) * spec.spread * 22 : 0;

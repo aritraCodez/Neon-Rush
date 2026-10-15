@@ -328,7 +328,7 @@ export class GameEngine {
 
   private combatStep(dt: number) {
     this.elapsed += dt;
-    this.x += (this.lane * LANE_WIDTH - this.x) * (1 - Math.exp(-(this.combat.dashTime > 0 ? 30 : 16) * dt));
+    this.x += (this.lane * LANE_WIDTH - this.x) * (1 - Math.exp(-(this.combat.dashTime > 0 ? 22 : 9) * dt));
     this.y += this.velocityY * dt; this.velocityY -= 27 * dt;
     if (this.y <= 0) { this.y = 0; this.velocityY = 0; }
     this.slide = this.combat.covering && this.y === 0 ? 0.1 : Math.max(0, this.slide - dt);
